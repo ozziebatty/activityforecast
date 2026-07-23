@@ -1,0 +1,219 @@
+# Places to check. Add a new spot by copying a block below - no code
+# changes needed, main.py picks up anything listed here automatically.
+#
+# Fields:
+#   name                 display name
+#   lat / lon            coordinates (decimal degrees)
+#   marine               true if this spot needs wave/swell/sea-temp data
+#                        (coastal/ocean activities). Leave off for
+#                        inland/sheltered spots to skip that API call.
+#   pollution_advisory   true/false - there's no reliable free live feed for
+#                        NSW Beachwatch water-quality advisories (the old
+#                        bulletin endpoints have been retired in favour of a
+#                        JS-only site with no documented API), so this is a
+#                        manual flag: check beachwatch.nsw.gov.au yourself
+#                        and flip it if a beach has an active advisory.
+#   tide_notes           free text, informational only (not scored) - fill
+#                        in once you know a break's tide preference. There's
+#                        no free live NSW tide API either, so this isn't
+#                        wired into scoring - a placeholder for you (or a
+#                        future data source) to use.
+#   whale_watching       true only at spots that actually look out over open
+#                        coastal water migrating whales would pass (May-Nov).
+#                        Drives the whale-season bonus in activities.yaml -
+#                        deliberately NOT set on inland spots like the Blue
+#                        Mountains just because they also have a "hiking"
+#                        activity in season.
+#   park_alert_match     list of NSW NPWS park names to match against the
+#                        live nationalparks.nsw.gov.au alerts feed
+#                        (closures/advisories) - shown as an informational
+#                        banner, never a scoring gate: the feed matches at
+#                        whole-park level, and a park can span hundreds of
+#                        square km, so an alert elsewhere in the park may
+#                        have nothing to do with this specific spot - check
+#                        it yourself. Only set this for spots actually
+#                        inside an NPWS-managed reserve (skip beaches/
+#                        harbours that aren't park land, and Commonwealth
+#                        parks like Booderee, which NPWS's feed doesn't
+#                        cover). Must match the park's exact name as it
+#                        appears in the feed (it's matched as a prefix).
+#   activities           dict of activity-key -> params. The activity key
+#                        must match a block in activities.yaml (kayaking has
+#                        two profiles - kayaking_sea and kayaking_freshwater
+#                        - pick whichever suits the water body). Params:
+#                          time_window: {start, end}   overrides the
+#                              activity's default window for this spot.
+#                          offshore_directions: [{from, to}, ...]  compass
+#                              sectors (0-360) for wind blowing from land to
+#                              sea here - used as a "clean wave" bonus for
+#                              surfing and a hard safety gate for
+#                              kitesurfing. These are rough approximations
+#                              of each beach's orientation, NOT verified
+#                              local/safety knowledge - correct them before
+#                              relying on the kitesurfing gate for real
+#                              safety decisions.
+
+# --- climbing / hiking (inland) ----------------------------------------
+
+- name: Blue Mountains (Katoomba)
+  lat: -33.7128
+  lon: 150.3119
+  park_alert_match: ["Blue Mountains National Park"]
+  activities:
+    climbing: {}
+    hiking: {}
+
+- name: Kanangra-Boyd National Park (Kanangra Walls)
+  lat: -33.9928
+  lon: 149.9897
+  park_alert_match: ["Kanangra-Boyd National Park"]
+  activities:
+    climbing: {}
+    hiking: {}
+
+- name: Nowra (Shoalhaven Gorge)
+  lat: -34.8770
+  lon: 150.6020
+  activities:
+    climbing: {}
+
+- name: Wollemi National Park (Newnes/Glow Worm Tunnel)
+  lat: -33.4650
+  lon: 150.2280
+  park_alert_match: ["Wollemi National Park"]
+  activities:
+    hiking: {}
+
+- name: Kosciuszko National Park (Charlotte Pass)
+  lat: -36.4470
+  lon: 148.3236
+  park_alert_match: ["Kosciuszko National Park"]
+  activities:
+    hiking: {}
+
+- name: Budawangs (Pigeon House Mountain)
+  lat: -35.3610
+  lon: 150.3125
+  park_alert_match: ["Budawang National Park", "Morton National Park"]
+  activities:
+    hiking: {}
+
+# --- coastal (Sydney and nearby) ---------------------------------------
+
+- name: Royal National Park (Bundeena/Wattamolla)
+  lat: -34.0765
+  lon: 151.1517
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  park_alert_match: ["Royal National Park"]
+  activities:
+    hiking: {}
+    kayaking_sea: {}
+
+- name: Manly Beach
+  lat: -33.7969
+  lon: 151.2882
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  activities:
+    surfing:
+      time_window: {start: 6, end: 10}
+      offshore_directions: [{from: 225, to: 275}]   # beach faces NE - SW/W is offshore
+
+- name: Bondi Beach
+  lat: -33.8908
+  lon: 151.2743
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  activities:
+    surfing:
+      time_window: {start: 6, end: 10}
+      offshore_directions: [{from: 250, to: 290}]   # beach faces E/ENE - W is offshore
+
+- name: Gordons Bay (Coogee)
+  lat: -33.9187
+  lon: 151.2649
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  tide_notes: null
+  activities:
+    scuba:
+      time_window: {start: 8, end: 15}
+
+- name: Cronulla / Wanda Beach
+  lat: -34.0287
+  lon: 151.1547
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  tide_notes: null
+  activities:
+    surfing:
+      time_window: {start: 6, end: 10}
+      offshore_directions: [{from: 280, to: 330}]   # beach faces E/SE - W/NW is offshore
+    kitesurfing:
+      time_window: {start: 11, end: 16}
+      offshore_directions: [{from: 280, to: 330}]
+    kayaking_sea: {}
+
+- name: Yarra Bay, Botany Bay (Kurnell)
+  lat: -33.9762
+  lon: 151.2270
+  marine: true
+  activities:
+    kitesurfing:
+      time_window: {start: 11, end: 16}
+      offshore_directions: [{from: 200, to: 280}]   # sheltered bay - unsafe direction blows away from shore, out into the bay
+    kayaking_freshwater: {}   # sheltered bay - flat-water profile, not a literal freshwater body
+
+- name: Sydney Harbour (Rose Bay)
+  lat: -33.8688
+  lon: 151.2711
+  activities:
+    kayaking_freshwater: {}
+
+- name: RANSA (Rushcutters Bay)
+  lat: -33.8735
+  lon: 151.2350
+  activities:
+    sailing: {}
+
+- name: Sydney CBD
+  lat: -33.8688
+  lon: 151.2093
+  activities:
+    city_touring: {}
+
+- name: Jervis Bay (Hyams Beach)
+  lat: -35.0997
+  lon: 150.7086
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  park_alert_match: ["Jervis Bay National Park"]
+  activities:
+    kayaking_sea: {}
+    snorkelling:
+      time_window: {start: 9, end: 15}
+    scuba:
+      time_window: {start: 8, end: 15}
+    hiking: {}
+
+# --- further out - genuinely clear water for snorkelling/scuba ---------
+
+- name: South West Rocks (Fish Rock Cave)
+  lat: -30.8817
+  lon: 153.0400
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  park_alert_match: ["Arakoon National Park"]
+  activities:
+    snorkelling:
+      time_window: {start: 9, end: 15}
+    scuba:
+      time_window: {start: 8, end: 15}

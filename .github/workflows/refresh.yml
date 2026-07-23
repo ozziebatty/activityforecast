@@ -1,0 +1,49 @@
+name: Refresh weather report
+
+# Runs on GitHub's servers, not your machine - nothing to keep running
+# locally, nothing for lab IT to notice. Re-scores from live weather data
+# and republishes to GitHub Pages every few hours, plus on demand via the
+# "Run workflow" button on this workflow's Actions tab.
+#
+# Note: GitHub auto-disables scheduled workflows after 60 days with no
+# commits to the repo. If the page stops updating, open the Actions tab
+# and re-enable it (or push any small commit to reset the clock).
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # every 3 hours, UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p dist
+          python main.py --out dist/index.html --days 7
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

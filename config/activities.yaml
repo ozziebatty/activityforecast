@@ -1,0 +1,750 @@
+# Scoring rules per activity. This is the file to edit when you want to
+# tune scores or teach the planner about a new activity - no Python changes
+# needed. See scoring.py's module docstring for the full field reference;
+# quick summary:
+#
+#   time_window   default {start, end} (24h clock, local time) - the part
+#                 of the day this activity actually happens in. Locations
+#                 can override this per-activity in locations.yaml.
+#   factors       weighted 0-1 scores from ideal_min/max (full marks) /
+#                 hard_min/max (falls to 0 by here). Leave out
+#                 ideal_min/hard_min for "lower is better", or
+#                 ideal_max/hard_max for "higher is better".
+#   risk_factors  same idea, but for a *probability* (0-100) rather than a
+#                 severity. `sensitivity: low/medium/high` (exponent
+#                 1/2/3) controls how disproportionately a modest
+#                 probability of an adverse condition is punished -
+#                 low-consequence sports barely notice a 20% rain chance,
+#                 high-consequence ones (sea kayaking, kitesurfing) take a
+#                 real hit from it. The only live probability field
+#                 available from Open-Meteo's free tier is
+#                 rain_probability_max - there's no true wind-gust/storm
+#                 probability, so it's used here as the best available
+#                 proxy for "conditions could turn" risk. See README.
+#   gates         if ALL of a gate's conditions are met, score -> 0 with a
+#                 reason (shown with --explain). Used for genuine
+#                 dealbreakers: storms, offshore wind for kitesurfing, an
+#                 active water-quality advisory.
+#   bonuses       flat points added when conditions are met (can be
+#                 negative to act as a flat penalty).
+#   scope         any factor/risk_factor/gate/bonus condition can set this
+#                 to "window" (default), "outside_window", or "full_day".
+#
+# Available variables (per scope, per day/location):
+#   temperature_avg/_max/_min   (deg C)
+#   rain_total                  (mm, within that scope)
+#   rain_prior_24h/48h/72h, rain_24_to_72h   (mm, shared across scopes)
+#   rain_probability_max        (%, max hourly chance of rain in that scope)
+#   wind_speed_avg/_max, wind_gust_max, gust_ratio   (km/h; ratio = gust/avg)
+#   uv_max
+#   visibility_min               (metres - fog/haze/smoke)
+#   cloud_cover_avg               (%)
+#   humidity_avg, friction_index (friction_index = humidity when warm >=20C, else 0)
+#   storm_present                (1 if a thunderstorm code forecast in that scope)
+#   offshore_wind_present         (1 if wind direction falls in the location's
+#                                  `offshore_directions` sectors - see locations.yaml)
+#   pollution_advisory            (1 if the location's `pollution_advisory` flag is set)
+#   whale_watching_spot           (1 if the location's `whale_watching` flag is set - only
+#                                  set this at spots that actually look out over open coastal
+#                                  water; migration timing alone doesn't make an inland spot relevant)
+#   bluebottle_risk                (1 if wind isn't offshore, wind_speed_avg > 15km/h, and it's
+#                                  bluebottle season (Nov-Apr) - a heuristic proxy, not a live
+#                                  sighting feed (none exists for free). Most meaningful at spots
+#                                  with `offshore_directions` configured. See README.)
+#   month                         (1-12, for seasonal bonuses e.g. whale watching)
+#   wave_height_max, wind_wave_height_max, swell_wave_height_max,
+#   swell_period_avg, sea_surface_temperature_avg   (marine - only present
+#                                  where the location has `marine: true`)
+
+climbing:
+  time_window: {start: 8, end: 16}
+  factors:
+    - variable: temperature_avg
+      ideal_min: 12
+      ideal_max: 22
+      hard_min: 5
+      hard_max: 28
+      weight: 0.25
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 5
+      weight: 0.25
+    - variable: rain_24_to_72h
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.15
+    - variable: friction_index   # humidity, but only counted once it's warm
+      ideal_max: 30
+      hard_max: 85
+      weight: 0.10
+    - variable: wind_speed_max
+      ideal_max: 25
+      hard_max: 55
+      weight: 0.10
+    - variable: rain_total
+      scope: outside_window       # e.g. evening rain after the climb - counts, but barely
+      ideal_max: 0
+      hard_max: 25
+      weight: 0.05
+  gates:
+    - name: rain_during_session
+      variable: rain_total
+      op: ">"
+      value: 0.2
+      reason: Rain
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+
+hiking:
+  time_window: {start: 7, end: 17}
+  factors:
+    - variable: temperature_avg
+      ideal_min: 10
+      ideal_max: 20
+      hard_min: 5
+      hard_max: 25
+      weight: 0.25
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 12
+      weight: 0.25
+    - variable: rain_total
+      scope: outside_window
+      ideal_max: 0
+      hard_max: 30
+      weight: 0.05
+    - variable: rain_prior_24h    # muddy trails
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.10
+    - variable: visibility_min    # fog/haze/smoke - matters for lookouts
+      ideal_min: 10000
+      hard_min: 2000
+      weight: 0.15
+    - variable: wind_speed_max
+      ideal_max: 35
+      hard_max: 65
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 6
+      hard_max: 11
+      weight: 0.10
+  bonuses:
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 5
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 10
+    - name: clear skies
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 10
+
+swimming:
+  time_window: {start: 9, end: 17}
+  factors:
+    - variable: temperature_avg
+      ideal_min: 24
+      ideal_max: 30
+      hard_min: 16
+      hard_max: 36
+      weight: 0.35
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 10
+      weight: 0.15
+    - variable: wind_speed_max
+      ideal_max: 20
+      hard_max: 45
+      weight: 0.15
+    - variable: wave_height_max   # only present where marine: true
+      ideal_max: 1.0
+      hard_max: 2.5
+      weight: 0.20
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.15
+  gates:
+    - name: water_quality
+      variable: pollution_advisory
+      op: "=="
+      value: 1
+      reason: active water-quality advisory (set manually in locations.yaml)
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+
+snorkelling:
+  time_window: {start: 9, end: 15}
+  factors:
+    - variable: sea_surface_temperature_avg
+      ideal_min: 19
+      hard_min: 14
+      weight: 0.15
+    - variable: rain_prior_48h     # biggest single factor - runoff kills visibility
+      ideal_max: 0
+      hard_max: 25
+      weight: 0.30
+    - variable: swell_wave_height_max   # groundswell churns bottom sediment
+      ideal_max: 0.3
+      hard_max: 1.0
+      weight: 0.15
+    - variable: wind_wave_height_max    # wind chop, comfort/safety
+      ideal_max: 0.3
+      hard_max: 1.0
+      weight: 0.15
+    - variable: wind_speed_max
+      ideal_max: 15
+      hard_max: 32
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.05
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: medium
+      weight: 0.10
+  gates:
+    - name: water_quality
+      variable: pollution_advisory
+      op: "=="
+      value: 1
+      reason: active water-quality advisory (set manually in locations.yaml)
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+    - name: bluebottles likely   # shoulder season - heuristic proxy, not a live sighting feed, see README
+      conditions:
+        - variable: month
+          op: in
+          value: [11, 3, 4]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -4
+    - name: bluebottles likely (peak)   # peak summer (Dec-Feb)
+      conditions:
+        - variable: month
+          op: in
+          value: [12, 1, 2]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -8
+
+scuba:   # mostly submerged, so UV drops out entirely and chop/wind tolerance is a bit wider than snorkelling
+  time_window: {start: 8, end: 15}
+  factors:
+    - variable: sea_surface_temperature_avg
+      ideal_min: 18
+      hard_min: 13
+      weight: 0.15
+    - variable: rain_prior_48h     # biggest single factor - runoff kills visibility
+      ideal_max: 0
+      hard_max: 25
+      weight: 0.35
+    - variable: swell_wave_height_max   # groundswell churns bottom sediment
+      ideal_max: 0.4
+      hard_max: 1.3
+      weight: 0.20
+    - variable: wind_wave_height_max    # wind chop at the surface, entry/exit safety
+      ideal_max: 0.4
+      hard_max: 1.3
+      weight: 0.15
+    - variable: wind_speed_max
+      ideal_max: 18
+      hard_max: 38
+      weight: 0.15
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: medium
+      weight: 0.10
+  gates:
+    - name: water_quality
+      variable: pollution_advisory
+      op: "=="
+      value: 1
+      reason: active water-quality advisory (set manually in locations.yaml)
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+    - name: bluebottles likely   # shoulder season - heuristic proxy, not a live sighting feed, see README
+      conditions:
+        - variable: month
+          op: in
+          value: [11, 3, 4]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -4
+    - name: bluebottles likely (peak)   # peak summer (Dec-Feb)
+      conditions:
+        - variable: month
+          op: in
+          value: [12, 1, 2]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -8
+
+kayaking_freshwater:   # rivers, dams, sheltered harbours - relaxed thresholds
+  time_window: {start: 7, end: 17}
+  factors:
+    - variable: wind_speed_max
+      ideal_max: 18
+      hard_max: 40
+      weight: 0.35
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.20
+    - variable: temperature_avg
+      ideal_min: 10
+      ideal_max: 32
+      hard_min: 0
+      hard_max: 38
+      weight: 0.15
+    - variable: visibility_min
+      ideal_min: 5000
+      hard_min: 1000
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 8
+      hard_max: 11
+      weight: 0.10
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: medium
+      weight: 0.10
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+
+kayaking_sea:   # open coastal water - much stricter than freshwater
+  time_window: {start: 7, end: 15}
+  factors:
+    - variable: wind_speed_max
+      ideal_max: 12
+      hard_max: 25
+      weight: 0.35
+    - variable: wave_height_max
+      ideal_max: 0.4
+      hard_max: 1.0
+      weight: 0.25
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 12
+      weight: 0.10
+    - variable: temperature_avg
+      ideal_min: 10
+      ideal_max: 30
+      hard_min: 0
+      hard_max: 36
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.05
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: high   # be conservative - even a 20-30% chance should sting
+      weight: 0.15
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+    - name: dangerous_gusts
+      variable: wind_gust_max
+      op: ">"
+      value: 55
+      reason: Dangerous gusts
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+    - name: bluebottles likely   # shoulder season - heuristic proxy, not a live sighting feed, see README
+      conditions:
+        - variable: month
+          op: in
+          value: [11, 3, 4]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -4
+    - name: bluebottles likely (peak)   # peak summer (Dec-Feb)
+      conditions:
+        - variable: month
+          op: in
+          value: [12, 1, 2]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -8
+
+surfing:
+  time_window: {start: 6, end: 10}
+  factors:
+    - variable: wave_height_max      # beginner-oriented: smaller, cleaner swell
+      ideal_min: 0.3
+      ideal_max: 0.7
+      hard_min: 0.1
+      hard_max: 1.4
+      weight: 0.25
+    - variable: swell_period_avg     # long-period groundswell > short wind-swell chop
+      ideal_min: 10
+      hard_min: 6
+      weight: 0.20
+    - variable: wind_wave_height_max # wind chop on top of the swell
+      ideal_max: 0.4
+      hard_max: 1.2
+      weight: 0.15
+    - variable: wind_speed_max
+      ideal_max: 12
+      hard_max: 28
+      weight: 0.15
+    - variable: temperature_avg      # low weight - wetsuit handles the cold
+      ideal_min: 18
+      ideal_max: 26
+      hard_min: 10
+      hard_max: 32
+      weight: 0.05
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.05
+  risk_factors:
+    - variable: rain_probability_max   # proxy for building/marginal storm risk
+      sensitivity: high
+      weight: 0.10
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+    - name: surf_too_big
+      variable: wave_height_max
+      op: ">"
+      value: 2.5
+      reason: surf too large for a beginner-oriented session
+  bonuses:
+    - name: offshore/clean
+      variable: offshore_wind_present   # per-location sectors, see locations.yaml
+      op: "=="
+      value: 1
+      points: 8
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 3
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+    - name: bluebottles likely   # shoulder season - heuristic proxy, not a live sighting feed, see README
+      conditions:
+        - variable: month
+          op: in
+          value: [11, 3, 4]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -4
+    - name: bluebottles likely (peak)   # peak summer (Dec-Feb)
+      conditions:
+        - variable: month
+          op: in
+          value: [12, 1, 2]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -8
+
+kitesurfing:
+  time_window: {start: 11, end: 16}   # typical NSW sea-breeze window
+  factors:
+    - variable: wind_speed_max        # ~15-25kt ideal, ~11-31kt hard (converted to km/h)
+      ideal_min: 28
+      ideal_max: 46
+      hard_min: 20
+      hard_max: 58
+      weight: 0.40
+    - variable: gust_ratio            # steadier wind = safer, more predictable
+      ideal_max: 1.3
+      hard_max: 1.8
+      weight: 0.10
+    - variable: wave_height_max       # flat water preferred for beginners
+      ideal_max: 0.5
+      hard_max: 1.6
+      weight: 0.15
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.10
+    - variable: temperature_avg
+      ideal_min: 16
+      ideal_max: 30
+      hard_min: 8
+      hard_max: 36
+      weight: 0.05
+  risk_factors:
+    - variable: rain_probability_max   # highest sensitivity of all activities
+      risk_exponent: 4
+      weight: 0.15
+  gates:
+    - name: offshore_wind
+      variable: offshore_wind_present   # per-location sectors, see locations.yaml
+      op: "=="
+      value: 1
+      reason: Offshore wind
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: storm forecast
+  bonuses:
+    - name: flat water
+      variable: wave_height_max
+      op: "<"
+      value: 0.3
+      points: 6
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 2
+
+sailing:   # club dinghy sailing on sheltered harbour water - moderate, steady wind wanted, not extremes
+  time_window: {start: 9, end: 17}
+  factors:
+    - variable: wind_speed_max        # ~7-15kt ideal, ~3-22kt hard (converted to km/h) - enough to sail, not a gale
+      ideal_min: 13
+      ideal_max: 28
+      hard_min: 6
+      hard_max: 40
+      weight: 0.35
+    - variable: gust_ratio             # steady wind is safer and far more pleasant to sail than gusty
+      ideal_max: 1.4
+      hard_max: 2.0
+      weight: 0.15
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.15
+    - variable: visibility_min         # fog/haze - other harbour traffic, navigation
+      ideal_min: 5000
+      hard_min: 1000
+      weight: 0.15
+    - variable: temperature_avg
+      ideal_min: 15
+      ideal_max: 28
+      hard_min: 8
+      hard_max: 34
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.10
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: medium   # sheltered harbour - real consequences if a squall blows through, but less than open coast
+      weight: 0.10
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: Storm
+    - name: dangerous_gusts
+      variable: wind_gust_max
+      op: ">"
+      value: 55
+      reason: Dangerous gusts
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
+
+city_touring:   # walking around the CBD - sightseeing, harbour/skyline views, no water/altitude factors at all
+  time_window: {start: 9, end: 17}
+  factors:
+    - variable: rain_total            # biggest factor - nobody enjoys touring a city on foot in the rain
+      ideal_max: 0
+      hard_max: 10
+      weight: 0.35
+    - variable: temperature_avg
+      ideal_min: 16
+      ideal_max: 26
+      hard_min: 5
+      hard_max: 34
+      weight: 0.25
+    - variable: uv_max                # hours outdoors walking between stops
+      ideal_max: 6
+      hard_max: 11
+      weight: 0.15
+    - variable: wind_speed_max        # mild penalty only - unpleasant between buildings, rarely dangerous
+      ideal_max: 30
+      hard_max: 60
+      weight: 0.15
+    - variable: visibility_min        # fog dulls the harbour/skyline views that are half the point
+      ideal_min: 8000
+      hard_min: 2000
+      weight: 0.10
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: Storm
+  bonuses:
+    - name: sunny
+      variable: cloud_cover_avg
+      op: "<"
+      value: 30
+      points: 5
