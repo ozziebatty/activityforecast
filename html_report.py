@@ -66,7 +66,6 @@ def _activity_sort_key(activity_key: str) -> int:
 
 BONUS_ICON = {
     "whales": "whale",
-    "whales (peak)": "whale",
     "offshore/clean": "wind",
     "flat water": "wave",
     "bluebottles likely": "bluebottle",
@@ -74,6 +73,45 @@ BONUS_ICON = {
 }
 
 STATUS_LABELS = {"great": "Great", "good": "Good", "acceptable": "Acceptable", "marginal": "Marginal", "poor": "Poor"}
+
+# Short display labels for the scoring breakdown's factor column - the raw
+# config/open_meteo variable names (e.g. "sea_surface_temperature_avg") ran
+# long enough to crowd out the points columns next to them. Anything not
+# listed falls back to a de-slugged version of the raw name (see _factor_label).
+FACTOR_LABELS = {
+    "friction_index": "friction",
+    "gust_ratio": "gustiness",
+    "rain_24_to_72h": "rain (24-72h)",
+    "rain_prior_24h": "rain (24h)",
+    "rain_prior_48h": "rain (48h)",
+    "rain_probability_max": "rain chance",
+    "rain_total": "rain",
+    "sea_surface_temperature_avg": "sea temp",
+    "swell_period_avg": "swell period",
+    "swell_wave_height_max": "swell height",
+    "temperature_avg": "temperature",
+    "uv_max": "UV",
+    "visibility_min": "visibility",
+    "wave_height_max": "wave height",
+    "wind_speed_max": "wind speed",
+    "wind_wave_height_max": "wind waves",
+}
+
+
+def _factor_label(variable: str, scope: str = "window") -> str:
+    """A couple of activities (hiking, climbing) score the same variable
+    twice at different scopes - e.g. rain during the hike window (heavily
+    weighted) and rain for the rest of the day outside it (lightly weighted,
+    for muddy trail conditions on the way in/out). Same variable, same
+    label, would otherwise show as two identical, unexplained "rain" rows -
+    so a non-default scope gets a suffix; the default "window" scope (the
+    vast majority of rows) stays unsuffixed."""
+    label = FACTOR_LABELS.get(variable, variable.replace("_", " "))
+    if scope == "outside_window":
+        return f"{label} (rest of day)"
+    if scope == "full_day":
+        return f"{label} (all day)"
+    return label
 
 
 def _kt(kmh):
@@ -126,12 +164,10 @@ HOURLY_DISPLAY_RANGE = range(7, 22)  # 7am-9pm inclusive
 
 def _hour_label(hour: int) -> str:
     if hour == 0:
-        return "12am"
-    if hour < 12:
-        return f"{hour}am"
-    if hour == 12:
-        return "12pm"
-    return f"{hour - 12}pm"
+        return "12"
+    if hour <= 12:
+        return str(hour)
+    return str(hour - 12)
 
 
 def display_name(activity_key: str) -> str:
@@ -245,13 +281,15 @@ def _breakdown(result: dict) -> str:
         value_str = "—" if value is None else (f"{value:.2f}" if isinstance(value, float) else str(value))
         points_str = "n/a" if entry["points"] is None else f"{entry['points']:.2f}"
         max_str = "n/a" if entry["max_points"] is None else f"{entry['max_points']:.2f}"
+        label = entry["variable"] if entry["kind"] == "bonus" else _factor_label(entry["variable"], entry.get("scope", "window"))
         rows.append(
-            f"<tr><td>{html.escape(entry['variable'])}</td>"
+            f"<tr><td>{html.escape(label)}</td>"
             f"<td>{value_str}</td><td>{points_str}</td><td>{max_str}</td></tr>"
         )
     return (
         '<details class="breakdown"><summary>Scoring</summary>'
-        '<table><thead><tr><th>factor</th><th>value</th><th>points</th><th>max</th></tr></thead>'
+        '<table><colgroup><col class="col-factor"><col><col><col></colgroup>'
+        '<thead><tr><th>factor</th><th>value</th><th>points</th><th>max</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table></details>"
     )
 
@@ -297,8 +335,8 @@ def _render_card(loc_name: str, activity_key: str, result: dict, window: dict, h
         <span class="status-chip"><span class="dot status-{status}"></span>{STATUS_LABELS[status]}</span>
       </div>
       <div class="chips">{_stat_chips(window)}</div>
-      {alert_banner}
       {_bonus_pills(result)}
+      {alert_banner}
       {hourly_widget}
       {_breakdown(result)}
     </article>"""
@@ -326,31 +364,41 @@ def _render_metric_bars(
     pairs: list, unit: str, decimals: int, color_fn, label_fn, extra_class: str = "", show_unit: bool = True,
     label_every: int = 1,
 ) -> str:
-    """`label_every` thins out the time/day label under each bar (e.g. every
-    3rd hour instead of all ~15) - the hourly breakdown has enough bars that
-    a label under every single one reads as clutter; the daily trend's ~7
-    bars don't need it, so it defaults to showing every label."""
+    """`label_every` can thin out the time/day label under each bar for a
+    widget with a lot of bars - unused (every label shown) by both current
+    callers, but left in case a future widget needs it.
+
+    Bars and labels render as two separate flex rows (not one bar+label
+    column each) so a label is never part of the fixed-height bar row - a
+    wrapped/overflowing label used to shrink the flex space left for its
+    bar, distorting the chart. Both rows use the same per-cell flex/gap so
+    columns still line up."""
     present = [v for _, v in pairs if v is not None]
     chart_max = (max(present) * 1.15) if present and max(present) > 0 else 1
-    bars = []
+    bar_cells, label_cells = [], []
     for i, (x, value) in enumerate(pairs):
         x_label = label_fn(x) if i % label_every == 0 else ""
+        label_cells.append(f'<span class="trend-day">{x_label}</span>')
         if value is None:
-            bars.append(
-                f'<div class="trend-bar-group"><span class="trend-value">–</span>'
-                f'<div class="trend-track"></div><span class="trend-day">{x_label}</span></div>'
+            bar_cells.append(
+                '<div class="trend-bar-cell"><span class="trend-value">–</span>'
+                '<div class="trend-track"></div></div>'
             )
             continue
         height_pct = max(4, round(value / chart_max * 100))
         color = color_fn(value)
         value_str = f"{value:.{decimals}f}{unit if show_unit else ''}"
-        bars.append(
-            f'<div class="trend-bar-group"><span class="trend-value">{value_str}</span>'
-            f'<div class="trend-track"><div class="trend-bar" style="height:{height_pct}%;background:{color}"></div></div>'
-            f'<span class="trend-day">{x_label}</span></div>'
+        bar_cells.append(
+            f'<div class="trend-bar-cell"><span class="trend-value">{value_str}</span>'
+            f'<div class="trend-track"><div class="trend-bar" style="height:{height_pct}%;background:{color}"></div></div></div>'
         )
     classes = f"trend-bars {extra_class}".strip()
-    return f'<div class="{classes}">{"".join(bars)}</div>'
+    return (
+        f'<div class="{classes}">'
+        f'<div class="trend-bars-row">{"".join(bar_cells)}</div>'
+        f'<div class="trend-labels-row">{"".join(label_cells)}</div>'
+        f"</div>"
+    )
 
 
 def _day_label(date_str: str) -> str:
@@ -402,8 +450,9 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
     since fetching/rendering this for the whole forecast window would be
     a lot of markup for days that are still ~a week of uncertainty away.
     The unit lives on the dropdown option (e.g. "Wind speed (kt)") rather
-    than repeated over every one of the ~15 bars in the row, and only every
-    3rd bar gets a time label underneath - one per hour was too cluttered."""
+    than repeated over every one of the ~15 bars in the row. Every hour gets
+    a label, just the bare hour number (no am/pm) - reads fine since the
+    bars are already in time order left to right."""
     sorted_hours = [h for h in sorted(hours, key=lambda h: h["hour"]) if h["hour"] in HOURLY_DISPLAY_RANGE]
     charts, options = [], []
     for key, label, unit, decimals, getter, color_fn in HOURLY_METRICS:
@@ -413,7 +462,6 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
         hidden_attr = "" if not charts else " hidden"
         bars_html = _render_metric_bars(
             pairs, unit, decimals, color_fn, _hour_label, extra_class="trend-bars-hourly", show_unit=False,
-            label_every=3,
         )
         charts.append(f'<div class="trend-chart" data-metric="{key}"{hidden_attr}>{bars_html}</div>')
         options.append(f'<option value="{key}">{_unit_label(label, unit)}</option>')
@@ -645,11 +693,13 @@ a { color:var(--accent); }
 .filter-label { display:block; font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:7px; }
 .filter-options { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
 /* Sports has ~10+ entries - spread across columns instead of one tall column, so the
-   bar stays a couple of rows deep rather than something you have to scroll past. */
-.filter-options-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:4px 18px; }
+   bar stays a couple of rows deep rather than something you have to scroll past. Columns
+   are wide enough for the longest label ("kayaking (sheltered)") on one line - narrower
+   columns let long labels wrap to a second line, which made some rows taller than others. */
+.filter-options-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:6px 18px; }
 .filter-option {
-  display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--ink-soft);
-  cursor:pointer; user-select:none; padding:1px 0;
+  display:flex; align-items:center; gap:7px; font-size:13px; color:var(--ink-soft);
+  cursor:pointer; user-select:none; padding:1px 0; white-space:nowrap;
 }
 .filter-option input { margin:0; accent-color:var(--accent); }
 .filter-option .icon-glyph { width:15px; height:15px; color:var(--muted); }
@@ -757,6 +807,10 @@ details.breakdown summary::before { content:"\\25B8\\0020"; }
 details.breakdown[open] summary::before { content:"\\25BE\\0020"; }
 details.breakdown summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 details.breakdown table { width:100%; border-collapse:collapse; margin-top:6px; font-size:10px; table-layout:fixed; }
+/* The factor column holds names like "wind speed" or "swell height" - a plain equal
+   4-way split left it truncated. It still gets extra width, but not so much that the
+   numeric columns (especially points, the one you're actually scanning) get crowded. */
+details.breakdown col.col-factor { width:38%; }
 details.breakdown th, details.breakdown td { text-align:left; padding:2px 4px; border-bottom:1px solid var(--line); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 details.breakdown th { color:var(--muted); font-weight:600; text-transform:uppercase; font-size:9px; letter-spacing:.04em; }
 details.breakdown td:nth-child(2), details.breakdown td:nth-child(3), details.breakdown td:nth-child(4) { font-variant-numeric:tabular-nums; }
@@ -779,16 +833,27 @@ details.breakdown td:nth-child(2), details.breakdown td:nth-child(3), details.br
   font:inherit; font-size:12.5px; color:var(--ink); background:var(--surface-2); border:1px solid var(--line);
   border-radius:6px; padding:4px 8px;
 }
-.trend-bars { display:flex; align-items:flex-end; gap:6px; height:110px; }
-.trend-bar-group { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; flex:1; height:100%; }
+/* Bars and their time/day labels are two separate flex rows (see
+   _render_metric_bars) rather than stacked inside one column per bar - that
+   way a long/wrapped label can never eat into the fixed-height row above it
+   and shrink the bar it belongs to. Both rows share the same per-cell
+   flex-basis and gap so the two rows still line up column-for-column. */
+.trend-bars { display:flex; flex-direction:column; gap:4px; }
+.trend-bars-row { display:flex; align-items:flex-end; gap:6px; height:110px; }
+.trend-bar-cell { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; flex:1; height:100%; min-width:0; }
 .trend-value { font-size:10.5px; color:var(--ink-soft); margin-bottom:4px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .trend-track { flex:1; width:100%; max-width:26px; display:flex; align-items:flex-end; }
 .trend-bar { width:100%; border-radius:4px 4px 0 0; min-height:2px; }
-.trend-day { font-size:9.5px; color:var(--muted); margin-top:5px; text-transform:uppercase; letter-spacing:.03em; }
+.trend-labels-row { display:flex; gap:6px; }
+.trend-day {
+  flex:1; min-width:0; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;
+}
 
 /* Hourly breakdown: a collapsed-by-default per-card widget, same bar mechanics
-   as the daily trend but with one bar per hour - horizontally scrollable
-   rather than squeezed, so every hour stays readable. */
+   as the daily trend but with one bar per hour, packed into the card width
+   (no horizontal scroll) - narrower columns and shorter labels ("7a" not
+   "7am") keep it fitting without needing to wrap or truncate. */
 details.trend-details { margin-top:-2px; }
 .trend-summary {
   display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none; list-style:none;
@@ -800,10 +865,9 @@ details.trend-details[open] .trend-summary::before { content:"\\25BE\\0020"; }
 .trend-summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .trend-summary .icon-glyph { width:15px; height:15px; color:var(--muted); }
 .trend-body { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
-.trend-bars-hourly { gap:2px; }
-.trend-bars-hourly .trend-bar-group { flex:1; min-width:0; }
-.trend-bars-hourly .trend-value { font-size:8.5px; }
-.trend-bars-hourly .trend-day { font-size:7.5px; }
+.trend-bars-hourly .trend-bars-row, .trend-bars-hourly .trend-labels-row { gap:2px; }
+.trend-bars-hourly .trend-value { font-size:8px; }
+.trend-bars-hourly .trend-day { font-size:7px; }
 .trend-bars-hourly .trend-track { max-width:none; }
 
 footer { max-width:1180px; margin:26px auto 0; padding:0 24px; color:var(--muted); font-size:12px; }

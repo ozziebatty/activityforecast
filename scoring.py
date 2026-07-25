@@ -140,7 +140,8 @@ def score_activity(context: dict, activity_cfg: dict) -> dict[str, Any]:
         value = scope.get(factor["variable"])
         factor_score = _factor_score(value, factor)
         weight = factor.get("weight", 1.0)
-        breakdown.append({"kind": "factor", "variable": factor["variable"], "value": value, "score": factor_score, "weight": weight})
+        scope = factor.get("scope", "window")
+        breakdown.append({"kind": "factor", "variable": factor["variable"], "scope": scope, "value": value, "score": factor_score, "weight": weight})
         if factor_score is not None:
             weighted_total += factor_score * weight
             weight_sum += weight
@@ -150,7 +151,8 @@ def score_activity(context: dict, activity_cfg: dict) -> dict[str, Any]:
         value = scope.get(risk_factor["variable"])
         risk_score = _risk_score(value, risk_factor)
         weight = risk_factor.get("weight", 1.0)
-        breakdown.append({"kind": "risk", "variable": risk_factor["variable"], "value": value, "score": risk_score, "weight": weight})
+        scope = risk_factor.get("scope", "window")
+        breakdown.append({"kind": "risk", "variable": risk_factor["variable"], "scope": scope, "value": value, "score": risk_score, "weight": weight})
         if risk_score is not None:
             weighted_total += risk_score * weight
             weight_sum += weight

@@ -141,7 +141,7 @@ hiking:
           op: "=="
           value: 1
       points: 5
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -197,7 +197,7 @@ swimming:
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -259,7 +259,7 @@ beach_day:   # a relaxed day out - sunbathing, paddling, a picnic on the sand - 
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -339,7 +339,7 @@ snorkelling:
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -415,7 +415,7 @@ scuba:   # mostly submerged, so UV drops out entirely and chop/wind tolerance is
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -529,7 +529,7 @@ kayaking_sea:   # open coastal water - much stricter than freshwater
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in
@@ -618,7 +618,7 @@ surfing:
           op: "=="
           value: 1
       points: 3
-    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+    - name: whales      # peak migration/calving season (Jun-Oct)
       conditions:
         - variable: month
           op: in

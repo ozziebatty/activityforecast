@@ -8,11 +8,13 @@ referenced by `<use>` wherever it appears (`use(name)`), the standard
 an icon repeats.
 
 Weather/stat glyphs (sun, cloud, rain, storm, thermometer, wind, wave,
-whale, bluebottle) carry their own fixed colour baked into the symbol,
-rather than inheriting `currentColor` - they read as "the sun", "a
-thermometer", etc, not as generic outline marks, and stay legible in both
-themes without per-instance overrides. Activity pictograms stay
-currentColor so they still pick up the accent tint from their surroundings.
+bluebottle) carry their own fixed colour baked into the symbol, rather
+than inheriting `currentColor` - they read as "the sun", "a thermometer",
+etc, not as generic outline marks, and stay legible in both themes
+without per-instance overrides. Activity pictograms (and the whale bonus
+glyph, which sits on a coloured pill rather than needing to read as its
+own colour) stay currentColor so they pick up the accent tint from their
+surroundings.
 """
 
 from __future__ import annotations
@@ -170,9 +172,9 @@ SYMBOLS: dict[str, str] = {
         <path d="M12 3c0 4-1 5-5 5 4 0 5 1 5 5 0-4 1-5 5-5-4 0-5-1-5-5Z" fill="currentColor" stroke="none"/>
     """,
     "whale": """
-        <path d="M2 13c3-5 9-7 15-5 2 .7 4 2 5 4-2 1-4 1.3-6 1-1.5 3-5 4.5-9 4-4-.5-6-2-5-4Z" fill="#3d5a80" fill-opacity="0.85" stroke="#3d5a80"/>
-        <path d="M15 8v-4" stroke="#3d5a80"/>
-        <circle cx="7" cy="12" r="0.8" fill="#eef1ea" stroke="none"/>
+        <path d="M2 13c3-5 9-7 15-5 2 .7 4 2 5 4-2 1-4 1.3-6 1-1.5 3-5 4.5-9 4-4-.5-6-2-5-4Z" fill="currentColor" fill-opacity="0.15"/>
+        <path d="M15 8v-4"/>
+        <circle cx="7" cy="12" r="0.8" fill="currentColor" stroke="none"/>
     """,
     "bluebottle": """
         <path d="M6 6c2-2 10-2 12 0 1.5 1.5 1 4-1 5-3 1.5-7 1.5-10 0-2-1-2.5-3.5-1-5Z" fill="#5064c9" fill-opacity="0.75" stroke="#5064c9"/>
