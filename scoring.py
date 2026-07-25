@@ -18,8 +18,20 @@ Every activity in config/activities.yaml is built from the same pieces:
                 forced to 0 (with a human-readable reason) regardless of
                 everything else, e.g. a storm forecast or offshore wind for
                 kitesurfing.
-  bonuses       flat points added on top when conditions are met - can also
-                be a negative number to act as a flat penalty.
+  bonuses       extra conditions folded into the same weighted average as
+                factors/risk_factors, rather than flat points bolted on
+                afterwards - a positive `points` value scores 1.0 (full
+                marks) when its condition is met, a negative value scores
+                0.0 (a penalty), each carrying a weight of `abs(points)/100`
+                into the same weighted_total/weight_sum used everywhere
+                else. Not met -> excluded entirely, same as a factor with no
+                data (no reward for whales not being in season, no penalty
+                for bluebottles not being a risk). This keeps `points`
+                proportionally diluted by however many real factors are
+                already driving the score, instead of able to paper over a
+                genuinely bad factor (e.g. rain during a hike) with a flat
+                +10 whale-season points, which is what a plain post-hoc
+                addition allowed.
 
 factors/risk_factors/gates/bonuses can each set `scope` to "window"
 (default - the activity's configured time-of-day window), "outside_window",
@@ -115,8 +127,6 @@ def score_activity(context: dict, activity_cfg: dict) -> dict[str, Any]:
             "score": 0.0,
             "gated": True,
             "gate_reason": gate_reason,
-            "base_score": 0.0,
-            "bonus_points": 0,
             "bonuses_hit": [],
             "breakdown": [],
         }
@@ -145,9 +155,30 @@ def score_activity(context: dict, activity_cfg: dict) -> dict[str, Any]:
             weighted_total += risk_score * weight
             weight_sum += weight
 
-    base_score = (weighted_total / weight_sum * 100) if weight_sum else None
+    # Bonuses/penalties fold into the same weighted average as factors above,
+    # rather than being added as flat points afterwards - see module
+    # docstring for why (a big flat bonus could otherwise mask a genuinely
+    # bad factor like rain). Skipped entirely when not met, same as a factor
+    # with no data - no reward for an inapplicable bonus, no penalty for an
+    # absent risk.
+    bonuses_hit = []
+    for bonus in activity_cfg.get("bonuses", []):
+        if not _all_conditions_met(context, bonus.get("conditions", [bonus])):
+            continue
+        points = bonus["points"]
+        name = bonus.get("name") or bonus.get("variable", "bonus")
+        weight = abs(points) / 100.0
+        bonus_score = 1.0 if points > 0 else 0.0
+        weighted_total += bonus_score * weight
+        weight_sum += weight
+        breakdown.append({"kind": "bonus", "variable": name, "value": None, "score": bonus_score, "weight": weight})
+        bonuses_hit.append({"name": name, "points": points})
 
-    # Rescale each factor's contribution onto the same 0-10 scale as the final
+    final_score = (weighted_total / weight_sum * 100) if weight_sum else None
+    if final_score is not None:
+        final_score = max(0.0, min(100.0, final_score))  # defensive only - a weighted average of [0,1] scores can't actually exceed this
+
+    # Rescale each entry's contribution onto the same 0-10 scale as the final
     # score, so the breakdown reads as "points earned out of points possible"
     # rather than an abstract 0-1 score and a raw weight.
     scale = (10 / weight_sum) if weight_sum else 0
@@ -159,21 +190,10 @@ def score_activity(context: dict, activity_cfg: dict) -> dict[str, Any]:
             entry["points"] = None
             entry["max_points"] = None
 
-    bonus_points = 0
-    bonuses_hit = []
-    for bonus in activity_cfg.get("bonuses", []):
-        if _all_conditions_met(context, bonus.get("conditions", [bonus])):
-            bonus_points += bonus["points"]
-            bonuses_hit.append({"name": bonus.get("name") or bonus.get("variable", "bonus"), "points": bonus["points"]})
-
-    final_score = None if base_score is None else max(0.0, min(100.0, base_score + bonus_points))
-
     return {
         "score": final_score,
         "gated": False,
         "gate_reason": None,
-        "base_score": base_score,
-        "bonus_points": bonus_points,
         "bonuses_hit": bonuses_hit,
         "breakdown": breakdown,
     }

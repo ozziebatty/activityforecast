@@ -24,6 +24,15 @@
 #                        deliberately NOT set on inland spots like the Blue
 #                        Mountains just because they also have a "hiking"
 #                        activity in season.
+#   requires_driving     true if this spot isn't practically reachable from
+#                        Sydney by train/bus/ferry (remote national parks with
+#                        no service, or a beach town with no direct public
+#                        transport) - a car is the only realistic way to get
+#                        there. Drives the report's "Driving" checkbox: left
+#                        unticked (the default) these spots are hidden, since
+#                        most day-trip planning is public-transport-first.
+#                        Leave unset (defaults false) for anywhere with a
+#                        train/bus/ferry that gets you there directly.
 #   park_alert_match     list of NSW NPWS park names to match against the
 #                        live nationalparks.nsw.gov.au alerts feed
 #                        (closures/advisories) - shown as an informational
@@ -67,6 +76,7 @@
   lat: -33.9928
   lon: 149.9897
   park_alert_match: ["Kanangra-Boyd National Park"]
+  requires_driving: true   # remote, unsealed access road - no public transport
   activities:
     climbing: {}
     hiking: {}
@@ -74,6 +84,7 @@
 - name: Nowra (Shoalhaven Gorge)
   lat: -34.8770
   lon: 150.6020
+  requires_driving: true   # nearest station (Bomaderry) doesn't reach the gorge itself
   activities:
     climbing: {}
 
@@ -81,6 +92,7 @@
   lat: -33.4650
   lon: 150.2280
   park_alert_match: ["Wollemi National Park"]
+  requires_driving: true   # remote, unsealed roads - no public transport
   activities:
     hiking: {}
 
@@ -88,6 +100,7 @@
   lat: -36.4470
   lon: 148.3236
   park_alert_match: ["Kosciuszko National Park"]
+  requires_driving: true   # remote alpine access - no public transport
   activities:
     hiking: {}
 
@@ -95,6 +108,7 @@
   lat: -35.3610
   lon: 150.3125
   park_alert_match: ["Budawang National Park", "Morton National Park"]
+  requires_driving: true   # remote - no public transport
   activities:
     hiking: {}
 
@@ -119,8 +133,8 @@
   whale_watching: true
   activities:
     surfing:
-      time_window: {start: 6, end: 10}
       offshore_directions: [{from: 225, to: 275}]   # beach faces NE - SW/W is offshore
+    beach_day: {}
 
 - name: Bondi Beach
   lat: -33.8908
@@ -130,8 +144,8 @@
   whale_watching: true
   activities:
     surfing:
-      time_window: {start: 6, end: 10}
       offshore_directions: [{from: 250, to: 290}]   # beach faces E/ENE - W is offshore
+    beach_day: {}
 
 - name: Gordons Bay (Coogee)
   lat: -33.9187
@@ -153,12 +167,13 @@
   tide_notes: null
   activities:
     surfing:
-      time_window: {start: 6, end: 10}
       offshore_directions: [{from: 280, to: 330}]   # beach faces E/SE - W/NW is offshore
     kitesurfing:
       time_window: {start: 11, end: 16}
       offshore_directions: [{from: 280, to: 330}]
+    kite_practice: {}   # wide open beach, consistently windy - good trainer-kite ground before rigging a full kite
     kayaking_sea: {}
+    beach_day: {}
 
 - name: Yarra Bay, Botany Bay (Kurnell)
   lat: -33.9762
@@ -168,6 +183,7 @@
     kitesurfing:
       time_window: {start: 11, end: 16}
       offshore_directions: [{from: 200, to: 280}]   # sheltered bay - unsafe direction blows away from shore, out into the bay
+    kite_practice: {}   # flat sheltered bay, wide beach - a good spot to learn trainer-kite handling before going out on the water
     kayaking_freshwater: {}   # sheltered bay - flat-water profile, not a literal freshwater body
 
 - name: Sydney Harbour (Rose Bay)
@@ -188,6 +204,12 @@
   activities:
     city_touring: {}
 
+- name: Parramatta Park
+  lat: -33.8149
+  lon: 151.0011
+  activities:
+    kite_practice: {}   # large open riverside parkland - room to fly a trainer kite with no water/board involved
+
 - name: Jervis Bay (Hyams Beach)
   lat: -35.0997
   lon: 150.7086
@@ -195,6 +217,7 @@
   pollution_advisory: false
   whale_watching: true
   park_alert_match: ["Jervis Bay National Park"]
+  requires_driving: true   # no train, no practical direct public transport from Sydney
   activities:
     kayaking_sea: {}
     snorkelling:
@@ -202,6 +225,7 @@
     scuba:
       time_window: {start: 8, end: 15}
     hiking: {}
+    beach_day: {}
 
 # --- further out - genuinely clear water for snorkelling/scuba ---------
 
@@ -212,6 +236,7 @@
   pollution_advisory: false
   whale_watching: true
   park_alert_match: ["Arakoon National Park"]
+  requires_driving: true   # far north coast, no practical public transport from Sydney
   activities:
     snorkelling:
       time_window: {start: 9, end: 15}

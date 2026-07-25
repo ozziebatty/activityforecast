@@ -74,6 +74,12 @@ SYMBOLS: dict[str, str] = {
         <rect x="15" y="9" width="4" height="12"/>
         <line x1="2" y1="21" x2="22" y2="21"/>
     """,
+    "beach_day": """
+        <line x1="12" y1="10" x2="12" y2="21"/>
+        <path d="M4 10a8 8 0 0 1 16 0Z"/>
+        <line x1="4" y1="10" x2="20" y2="10"/>
+        <path d="M5 21c2-2 4-2 6 0s4 2 6 0"/>
+    """,
     # --- sky / condition (fixed colour) ---------------------------------
     "sky-clear": """
         <circle cx="12" cy="12" r="4.4" fill="#eaa227" stroke="none"/>
@@ -179,6 +185,12 @@ SYMBOLS: dict[str, str] = {
     "refresh": """
         <path d="M20 11A8 8 0 1 0 19.5 16"/>
         <polyline points="20,5 20,11 14,11"/>
+    """,
+    "car": """
+        <path d="M4 16 5 10a2 2 0 0 1 2-1h10a2 2 0 0 1 2 1l1 6"/>
+        <rect x="3" y="16" width="18" height="4" rx="1.5"/>
+        <circle cx="7.5" cy="20" r="1.4" fill="currentColor" stroke="none"/>
+        <circle cx="16.5" cy="20" r="1.4" fill="currentColor" stroke="none"/>
     """,
     "alert-park": """
         <path d="M3 20 L11 5 L14 5 L21 20 Z"/>

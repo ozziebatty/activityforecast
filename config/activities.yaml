@@ -25,8 +25,12 @@
 #                 reason (shown with --explain). Used for genuine
 #                 dealbreakers: storms, offshore wind for kitesurfing, an
 #                 active water-quality advisory.
-#   bonuses       flat points added when conditions are met (can be
-#                 negative to act as a flat penalty).
+#   bonuses       folded into the same weighted average as factors/risk_factors
+#                 rather than added as flat points afterwards - a positive
+#                 `points` value scores full marks when its condition is met, a
+#                 negative value scores zero (a penalty), each weighted by
+#                 abs(points)/100. Not met -> excluded entirely, no reward/
+#                 penalty either way. See scoring.py's module docstring.
 #   scope         any factor/risk_factor/gate/bonus condition can set this
 #                 to "window" (default), "outside_window", or "full_day".
 #
@@ -92,12 +96,6 @@ climbing:
       op: ">"
       value: 0.2
       reason: Rain
-  bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
 
 hiking:
   time_window: {start: 7, end: 17}
@@ -152,11 +150,6 @@ hiking:
           op: "=="
           value: 1
       points: 10
-    - name: clear skies
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 10
 
 swimming:
   time_window: {start: 9, end: 17}
@@ -195,11 +188,6 @@ swimming:
       value: 1
       reason: storm forecast
   bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
     - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
       conditions:
         - variable: month
@@ -218,6 +206,86 @@ swimming:
           op: "=="
           value: 1
       points: 6
+
+beach_day:   # a relaxed day out - sunbathing, paddling, a picnic on the sand - not swimming laps or
+             # chasing swell, so wave/wind tolerance is calmer than swimming and UV/wind carry more
+             # weight (a stiff onshore breeze or harsh sun ruins a beach day even without any rain)
+  time_window: {start: 10, end: 16}
+  factors:
+    - variable: temperature_avg
+      ideal_min: 22
+      ideal_max: 29
+      hard_min: 16
+      hard_max: 34
+      weight: 0.30
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 8
+      weight: 0.25
+    - variable: wind_speed_max        # a stiff onshore breeze turns a beach day into a sandblasting
+      ideal_max: 20
+      hard_max: 40
+      weight: 0.15
+    - variable: wave_height_max       # calm water for paddling/kids, not swell to swim out into
+      ideal_max: 1.0
+      hard_max: 2.0
+      weight: 0.10
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.10
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: low
+      weight: 0.10
+  gates:
+    - name: water_quality
+      variable: pollution_advisory
+      op: "=="
+      value: 1
+      reason: active water-quality advisory (set manually in locations.yaml)
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: Storm
+  bonuses:
+    - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
+      conditions:
+        - variable: month
+          op: in
+          value: [5, 11]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 3
+    - name: whales (peak)      # peak migration/calving season (Jun-Oct)
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 6
+    - name: bluebottles likely   # shoulder season - heuristic proxy, not a live sighting feed, see README
+      conditions:
+        - variable: month
+          op: in
+          value: [11, 3, 4]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -4
+    - name: bluebottles likely (peak)   # peak summer (Dec-Feb) - a real dealbreaker for lounging on the sand
+      conditions:
+        - variable: month
+          op: in
+          value: [12, 1, 2]
+        - variable: bluebottle_risk
+          op: "=="
+          value: 1
+      points: -8
 
 snorkelling:
   time_window: {start: 9, end: 15}
@@ -262,11 +330,6 @@ snorkelling:
       value: 1
       reason: storm forecast
   bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
     - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
       conditions:
         - variable: month
@@ -343,11 +406,6 @@ scuba:   # mostly submerged, so UV drops out entirely and chop/wind tolerance is
       value: 1
       reason: storm forecast
   bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
     - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
       conditions:
         - variable: month
@@ -420,12 +478,6 @@ kayaking_freshwater:   # rivers, dams, sheltered harbours - relaxed thresholds
       op: "=="
       value: 1
       reason: storm forecast
-  bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
 
 kayaking_sea:   # open coastal water - much stricter than freshwater
   time_window: {start: 7, end: 15}
@@ -468,11 +520,6 @@ kayaking_sea:   # open coastal water - much stricter than freshwater
       value: 55
       reason: Dangerous gusts
   bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
     - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
       conditions:
         - variable: month
@@ -511,7 +558,7 @@ kayaking_sea:   # open coastal water - much stricter than freshwater
       points: -8
 
 surfing:
-  time_window: {start: 6, end: 10}
+  time_window: {start: 9, end: 16}   # daytime session, not a dawn-patrol-only check
   factors:
     - variable: wave_height_max      # beginner-oriented: smaller, cleaner swell
       ideal_min: 0.3
@@ -562,11 +609,6 @@ surfing:
       op: "=="
       value: 1
       points: 8
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 3
     - name: whales             # shoulder season (early/late migration) - only at whale_watching: true spots
       conditions:
         - variable: month
@@ -652,11 +694,46 @@ kitesurfing:
       op: "<"
       value: 0.3
       points: 6
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 2
+
+kite_practice:   # land-based trainer-kite handling practice (no board, no water) - a gentler on-ramp
+                 # before kitesurfing proper, so wind range is wider and there's no wave/marine or
+                 # offshore-wind gate at all. Good on open grass (Parramatta Park) or open beach sand.
+  time_window: {start: 10, end: 16}
+  factors:
+    - variable: wind_speed_max        # optimum ~12, starts scoring at 8 - trainer kites want much less
+      ideal_min: 10                   # wind than a full kitesurfing rig, and get twitchy/hard to handle well past this
+      ideal_max: 14
+      hard_min: 8
+      hard_max: 22
+      weight: 0.35
+    - variable: gust_ratio             # steady wind = predictable, forgiving practice; gusty is what
+      ideal_max: 1.4                   # actually catches beginners out, not raw wind speed
+      hard_max: 2.0
+      weight: 0.20
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 15
+      weight: 0.20
+    - variable: temperature_avg
+      ideal_min: 15
+      ideal_max: 28
+      hard_min: 5
+      hard_max: 35
+      weight: 0.15
+    - variable: uv_max
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.10
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: low   # low consequence sport - a gusty rain shower just ends the session, nothing more
+      weight: 0.10
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: Storm
 
 sailing:   # club dinghy sailing on sheltered harbour water - moderate, steady wind wanted, not extremes
   time_window: {start: 9, end: 17}
@@ -704,12 +781,6 @@ sailing:   # club dinghy sailing on sheltered harbour water - moderate, steady w
       op: ">"
       value: 55
       reason: Dangerous gusts
-  bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5
 
 city_touring:   # walking around the CBD - sightseeing, harbour/skyline views, no water/altitude factors at all
   time_window: {start: 9, end: 17}
@@ -742,9 +813,3 @@ city_touring:   # walking around the CBD - sightseeing, harbour/skyline views, n
       op: "=="
       value: 1
       reason: Storm
-  bonuses:
-    - name: sunny
-      variable: cloud_cover_avg
-      op: "<"
-      value: 30
-      points: 5

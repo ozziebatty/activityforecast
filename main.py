@@ -8,6 +8,15 @@ self-contained HTML report by default - pass --text for a quick terminal
 view instead, or --serve to run a small local server with a live Refresh
 button (re-scores on every request instead of writing a static snapshot).
 
+Fetching (network-bound, rate-limited) and scoring/rendering (pure local
+computation) are separable: --extract-only saves the raw fetched data to a
+JSON file and stops there, and --from-extract scores/renders from that file
+instead of hitting the network at all - handy for iterating on
+activities.yaml/html_report.py against a fixed dataset, or for
+visualising the same fetch under several --activity/--min-score filters
+without re-fetching each time. Plain `python main.py` still does both
+steps in one go, as it always did.
+
 Add spots in config/locations.yaml and tune/add scoring in
 config/activities.yaml - this file doesn't need to change for either.
 """
@@ -18,9 +27,11 @@ import argparse
 import concurrent.futures
 import datetime as dt
 import http.server
+import json
 import sys
 import webbrowser
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from config_loader import load_activities, load_locations
 from context import DEFAULT_TIME_WINDOW, build_day_context
@@ -49,6 +60,15 @@ def parse_args():
     parser.add_argument("--port", type=int, default=8765, help="Port for --serve (default: 8765)")
     parser.add_argument("--explain", action="store_true", help="Terminal mode only: show the factor-by-factor scoring breakdown")
     parser.add_argument("--no-color", action="store_true", help="Terminal mode only: disable ANSI colour in the score bar")
+    parser.add_argument(
+        "--extract-only", metavar="PATH",
+        help="Fetch weather/marine/NPWS data and save it to PATH as JSON, then exit - no scoring or rendering. "
+        "Pair with --from-extract to visualise the same fetch repeatedly without hitting the network again.",
+    )
+    parser.add_argument(
+        "--from-extract", metavar="PATH",
+        help="Score/render using data previously saved by --extract-only, instead of fetching live data.",
+    )
     return parser.parse_args()
 
 
@@ -72,12 +92,17 @@ def _fetch_all_days(locations, days_ahead):
     return days_by_location
 
 
-def collect_results(locations, activities_cfg, args):
+def collect_results(locations, activities_cfg, args, days_by_location=None, npws_feed=None):
+    """`days_by_location`/`npws_feed` let a caller supply already-fetched
+    data (see --from-extract in main()) instead of hitting the network -
+    left as None (the default) to fetch live, same as always."""
     results = []  # (date_str, location_name, activity_key, result, window_ctx)
     hourly_lookup = {}  # (location_name, date_str) -> raw hourly records, for the hourly trend charts
 
-    npws_feed = fetch_alerts() if any(loc.get("park_alert_match") for loc in locations) else []
-    days_by_location = _fetch_all_days(locations, args.days)
+    if npws_feed is None:
+        npws_feed = fetch_alerts() if any(loc.get("park_alert_match") for loc in locations) else []
+    if days_by_location is None:
+        days_by_location = _fetch_all_days(locations, args.days)
 
     for location in locations:
         activity_items = list(location.get("activities", {}).items())
@@ -110,9 +135,12 @@ def collect_results(locations, activities_cfg, args):
             offshore_directions = params.get("offshore_directions")
             pollution_advisory = location.get("pollution_advisory", False)
             whale_watching = location.get("whale_watching", False)
+            requires_driving = location.get("requires_driving", False)
 
             for date_str, day in days.items():
-                ctx = build_day_context(day, time_window, offshore_directions, pollution_advisory, whale_watching)
+                ctx = build_day_context(
+                    day, time_window, offshore_directions, pollution_advisory, whale_watching, requires_driving
+                )
                 result = score_activity(ctx, activity_cfg)
                 if result["score"] is None:
                     continue
@@ -123,7 +151,14 @@ def collect_results(locations, activities_cfg, args):
                 if not result["gated"] and result["score"] < args.min_score:
                     continue
 
-                results.append((date_str, location["name"], activity_key, result, ctx["window"]))
+                # Scoring itself stays keyed to the activity's own time-of-day window (a
+                # dawn surf check genuinely is a different slice of the day to a midday
+                # beach day - see README's "Time-of-day weighting"), but the card's
+                # display data (chips, condition line, trend charts) uses full_day so two
+                # activities at the same location on the same day show the same
+                # temperature/wind/etc - showing each activity's own narrower window there
+                # made otherwise-identical days look inconsistent for no obvious reason.
+                results.append((date_str, location["name"], activity_key, result, ctx["full_day"]))
 
     return results, hourly_lookup
 
@@ -169,15 +204,37 @@ def print_text_report(results, explain: bool, use_color: bool):
                     )
 
 
-def _generated_label() -> str:
-    return dt.datetime.now().strftime("%a %d %b, %I:%M%p").lstrip("0").replace(" 0", " ")
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 
-def serve(locations, activities_cfg, args):
+def _generated_label(when: dt.datetime | None = None) -> str:
+    # Explicitly Sydney time, not whatever timezone the machine running this happens to
+    # be in - this is a NSW planner, and GitHub Actions runners default to UTC, which
+    # made the "Generated" label on the published report read 10-11h behind actual local time.
+    return (when or dt.datetime.now(SYDNEY_TZ)).strftime("%a %d %b, %I:%M%p").lstrip("0").replace(" 0", " ")
+
+
+def _extract(locations, args) -> dict:
+    """The network-bound half of a run: NPWS alerts + every location's
+    weather/marine data, bundled with a timestamp so a later --from-extract
+    run can label the report with when the data actually came from the
+    network, not when it happened to be rendered."""
+    npws_feed = fetch_alerts() if any(loc.get("park_alert_match") for loc in locations) else []
+    days_by_location = _fetch_all_days(locations, args.days)
+    return {"fetched_at": dt.datetime.now(SYDNEY_TZ).isoformat(), "npws_feed": npws_feed, "days_by_location": days_by_location}
+
+
+def serve(locations, activities_cfg, args, cached: dict | None = None):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            results, hourly_lookup = collect_results(locations, activities_cfg, args)
-            body = render_html(results, _generated_label(), hourly_lookup, live=True).encode("utf-8")
+            if cached is not None:
+                days_by_location, npws_feed = cached["days_by_location"], cached["npws_feed"]
+                generated_label = _generated_label(dt.datetime.fromisoformat(cached["fetched_at"])) + " (from --from-extract, not live)"
+            else:
+                days_by_location, npws_feed = None, None
+                generated_label = _generated_label()
+            results, hourly_lookup = collect_results(locations, activities_cfg, args, days_by_location, npws_feed)
+            body = render_html(results, generated_label, hourly_lookup, live=(cached is None)).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -190,7 +247,8 @@ def serve(locations, activities_cfg, args):
 
     url = f"http://127.0.0.1:{args.port}/"
     server = http.server.HTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Serving live report at {url} (each Refresh re-scores from live weather data; Ctrl+C to stop)")
+    refresh_note = "each Refresh re-renders the --from-extract data (no network hit)" if cached is not None else "each Refresh re-scores from live weather data"
+    print(f"Serving live report at {url} ({refresh_note}; Ctrl+C to stop)")
     webbrowser.open(url)
     try:
         server.serve_forever()
@@ -214,11 +272,30 @@ def main() -> int:
             print(f"No location matches '{args.location}'")
             return 1
 
-    if args.serve:
-        serve(locations, activities_cfg, args)
+    if args.extract_only:
+        extracted = _extract(locations, args)
+        out_path = Path(args.extract_only).resolve()
+        out_path.write_text(json.dumps(extracted), encoding="utf-8")
+        print(f"Wrote {out_path} ({len(extracted['days_by_location'])} location(s)) - "
+              f"visualise it with --from-extract {out_path}")
         return 0
 
-    results, hourly_lookup = collect_results(locations, activities_cfg, args)
+    cached = None
+    if args.from_extract:
+        cached = json.loads(Path(args.from_extract).read_text(encoding="utf-8"))
+
+    if args.serve:
+        serve(locations, activities_cfg, args, cached)
+        return 0
+
+    if cached is not None:
+        generated_label = _generated_label(dt.datetime.fromisoformat(cached["fetched_at"])) + " (from --from-extract, not live)"
+        results, hourly_lookup = collect_results(
+            locations, activities_cfg, args, cached["days_by_location"], cached["npws_feed"]
+        )
+    else:
+        generated_label = _generated_label()
+        results, hourly_lookup = collect_results(locations, activities_cfg, args)
 
     if not results:
         print("No results - check your filters, or that locations.yaml/activities.yaml activity keys line up.")
@@ -228,7 +305,7 @@ def main() -> int:
         print_text_report(results, args.explain, use_color=not args.no_color)
         return 0
 
-    html_doc = render_html(results, _generated_label(), hourly_lookup)
+    html_doc = render_html(results, generated_label, hourly_lookup)
     out_path = Path(args.out).resolve()
     out_path.write_text(html_doc, encoding="utf-8")
     print(f"Wrote {out_path}")

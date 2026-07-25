@@ -27,7 +27,9 @@ FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
 
 DISPLAY_NAMES = {
     "kayaking_sea": "kayaking (sea)",
-    "kayaking_freshwater": "kayaking (sheltered/flat)",
+    "kayaking_freshwater": "kayaking (sheltered)",
+    "kite_practice": "kite practice",
+    "beach_day": "beach day",
 }
 
 ACTIVITY_ICON = {
@@ -40,15 +42,31 @@ ACTIVITY_ICON = {
     "kayaking_sea": "kayaking",
     "kayaking_freshwater": "kayaking",
     "kitesurfing": "kitesurfing",
+    "kite_practice": "kitesurfing",
     "sailing": "sailing",
     "city_touring": "city_touring",
+    "beach_day": "beach_day",
 }
+
+# Cards (and the Sports checklist) group by activity category in this order
+# rather than sorting by score, so the same sport always lands in the same
+# place on the page instead of jumping around day to day. Anything not
+# listed (e.g. "swimming", currently unused - see README) sorts after
+# everything named here, in whatever order it's encountered.
+ACTIVITY_ORDER = [
+    "hiking", "climbing", "kite_practice", "city_touring", "beach_day",
+    "surfing", "sailing", "kitesurfing", "kayaking_sea", "kayaking_freshwater",
+    "snorkelling", "scuba",
+]
+ACTIVITY_ORDER_INDEX = {key: i for i, key in enumerate(ACTIVITY_ORDER)}
+
+
+def _activity_sort_key(activity_key: str) -> int:
+    return ACTIVITY_ORDER_INDEX.get(activity_key, len(ACTIVITY_ORDER))
 
 BONUS_ICON = {
     "whales": "whale",
     "whales (peak)": "whale",
-    "sunny": "sky-clear",
-    "clear skies": "sky-clear",
     "offshore/clean": "wind",
     "flat water": "wave",
     "bluebottles likely": "bluebottle",
@@ -57,15 +75,31 @@ BONUS_ICON = {
 
 STATUS_LABELS = {"great": "Great", "good": "Good", "acceptable": "Acceptable", "marginal": "Marginal", "poor": "Poor"}
 
+
+def _kt(kmh):
+    return None if kmh is None else kmh / 1.852
+
+
+def _score_color(v10) -> str:
+    """v10 is the 0-10 displayed score - reuses the same 5-tier grading as
+    the card meter/dot so the trend chart colour lines up with what you'd
+    see on the card itself."""
+    return f"var(--score-{score_status(v10 * 10)})"
+
+
 # (key, label, unit, decimals, getter, colour-picker) - drives the per-card
 # "Forecast trend" dropdown. A metric is skipped entirely for a given
 # location/activity if none of its days have data for it (e.g. wave height
-# at an inland spot).
+# at an inland spot). Total score leads (and is the default shown) since
+# that's usually what you actually opened the widget to check; the getter
+# reads "score_total" which _render_trend_widget injects per day (score
+# isn't part of the window context - it's the overall scored result).
 METRICS = [
-    ("temp", "Temperature", "°C", 0, lambda w: w.get("temperature_avg"), lambda v: "#d85c3f"),
+    ("score", "Total score", "/10", 1, lambda w: (w["score_total"] / 10) if w.get("score_total") is not None else None, _score_color),
+    ("temp", "Temperature", "°C", 0, lambda w: w.get("temperature_max"), lambda v: "#d85c3f"),
     ("rain_prob", "Chance of rain", "%", 0, lambda w: w.get("rain_probability_max"), lambda v: "#4a86c9"),
     ("uv", "UV index", "", 0, lambda w: w.get("uv_max"), lambda v: f"var(--{uv_status(v)})"),
-    ("wind", "Wind speed", " km/h", 0, lambda w: w.get("wind_speed_max"), lambda v: "#2f9a92"),
+    ("wind", "Wind speed", " kt", 0, lambda w: _kt(w.get("wind_speed_max")), lambda v: "#2f9a92"),
     ("wave", "Wave height", " m", 1, lambda w: w.get("wave_height_max"), lambda v: "#2f8fbf"),
     ("sea_temp", "Sea temperature", "°C", 0, lambda w: w.get("sea_surface_temperature_avg"), lambda v: "#1f6f96"),
 ]
@@ -74,12 +108,13 @@ METRICS = [
 # names) instead of the window-aggregated ones, for the per-card "Hourly
 # detail" widget on the soonest couple of days. Chance of rain leads (and is
 # the default shown) since it's usually the first thing you actually want to
-# check hour-by-hour.
+# check hour-by-hour. No "Total score" here - the overall score is a whole-
+# window figure, not something that varies meaningfully hour to hour.
 HOURLY_METRICS = [
     ("rain_prob", "Chance of rain", "%", 0, lambda h: h.get("precipitation_probability"), lambda v: "#4a86c9"),
     ("temp", "Temperature", "°C", 0, lambda h: h.get("temperature_2m"), lambda v: "#d85c3f"),
     ("uv", "UV index", "", 0, lambda h: h.get("uv_index"), lambda v: f"var(--{uv_status(v)})"),
-    ("wind", "Wind speed", " km/h", 0, lambda h: h.get("wind_speed_10m"), lambda v: "#2f9a92"),
+    ("wind", "Wind speed", " kt", 0, lambda h: _kt(h.get("wind_speed_10m")), lambda v: "#2f9a92"),
     ("wave", "Wave height", " m", 1, lambda h: h.get("wave_height"), lambda v: "#2f8fbf"),
     ("sea_temp", "Sea temperature", "°C", 0, lambda h: h.get("sea_surface_temperature"), lambda v: "#1f6f96"),
 ]
@@ -148,7 +183,7 @@ def uv_status(uv_max):
     if uv_max is None:
         return "good"
     if uv_max >= 11:
-        return "critical"
+        return "uv-extreme"   # standard international UV Index scale reserves violet/purple for Extreme (11+)
     if uv_max >= 8:
         return "serious"
     if uv_max >= 6:
@@ -174,10 +209,10 @@ def _stat_chips(window: dict) -> str:
     chips = []
     sky_icon, sky_label = sky_state(window)
     chips.append(f'<span class="chip">{use(sky_icon)}{sky_label}</span>')
-    if window.get("temperature_avg") is not None:
-        chips.append(f'<span class="chip">{use("temp")}{window["temperature_avg"]:.0f}°C</span>')
+    if window.get("temperature_max") is not None:
+        chips.append(f'<span class="chip">{use("temp")}{window["temperature_max"]:.0f}°C</span>')
     if window.get("wind_speed_max") is not None:
-        chips.append(f'<span class="chip">{use("wind")}{window["wind_speed_max"]:.0f} km/h</span>')
+        chips.append(f'<span class="chip">{use("wind")}{_kt(window["wind_speed_max"]):.0f} kt</span>')
     uv = window.get("uv_max")
     if uv is not None:
         status = uv_status(uv)
@@ -211,12 +246,12 @@ def _breakdown(result: dict) -> str:
         points_str = "n/a" if entry["points"] is None else f"{entry['points']:.2f}"
         max_str = "n/a" if entry["max_points"] is None else f"{entry['max_points']:.2f}"
         rows.append(
-            f"<tr><td>{entry['kind']}</td><td>{html.escape(entry['variable'])}</td>"
+            f"<tr><td>{html.escape(entry['variable'])}</td>"
             f"<td>{value_str}</td><td>{points_str}</td><td>{max_str}</td></tr>"
         )
     return (
-        '<details class="breakdown"><summary>Scoring breakdown</summary>'
-        '<table><thead><tr><th>type</th><th>factor</th><th>value</th><th>points</th><th>max</th></tr></thead>'
+        '<details class="breakdown"><summary>Scoring</summary>'
+        '<table><thead><tr><th>factor</th><th>value</th><th>points</th><th>max</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table></details>"
     )
 
@@ -224,10 +259,11 @@ def _breakdown(result: dict) -> str:
 def _render_card(loc_name: str, activity_key: str, result: dict, window: dict, hourly_widget: str = "") -> str:
     icon = ACTIVITY_ICON.get(activity_key, "hiking")
     label = display_name(activity_key)
+    driving_attr = "1" if window.get("requires_driving") else "0"
 
     if result["gated"]:
         return f"""
-        <article class="card card-gated">
+        <article class="card card-gated" data-activity="{activity_key}" data-driving="{driving_attr}">
           <div class="card-head">
             <span class="activity-icon">{use(icon)}</span>
             <div class="card-title"><h3>{html.escape(label)}</h3><p>{html.escape(loc_name)}</p></div>
@@ -239,10 +275,18 @@ def _render_card(loc_name: str, activity_key: str, result: dict, window: dict, h
     status = score_status(result["score"])
     alert_banner = ""
     if result.get("park_alert"):
-        variant = "alert-banner-closed" if result.get("park_alert_closed") else "alert-banner"
-        alert_banner = f'<div class="{variant}">{use("alert-park")}<span>NPWS: {html.escape(result["park_alert"])}</span></div>'
+        closed = result.get("park_alert_closed")
+        variant = "alert-details-closed" if closed else "alert-details"
+        summary_label = "NPWS closure" if closed else "NPWS alert"
+        # A dropdown rather than an always-open banner - still visibly flags that there
+        # IS an alert (and how serious) without spending permanent card height on the
+        # full text, which can run to a full sentence or two.
+        alert_banner = (
+            f'<details class="{variant}"><summary>{use("alert-park")}{summary_label}</summary>'
+            f"<p>{html.escape(result['park_alert'])}</p></details>"
+        )
     return f"""
-    <article class="card">
+    <article class="card" data-activity="{activity_key}" data-driving="{driving_attr}">
       <div class="card-head">
         <span class="activity-icon">{use(icon)}</span>
         <div class="card-title"><h3>{html.escape(label)}</h3><p>{html.escape(loc_name)}</p></div>
@@ -278,12 +322,19 @@ def _render_day(date_str: str, rows: list, open_by_default: bool, hourly_lookup:
     </details>"""
 
 
-def _render_metric_bars(pairs: list, unit: str, decimals: int, color_fn, label_fn, extra_class: str = "") -> str:
+def _render_metric_bars(
+    pairs: list, unit: str, decimals: int, color_fn, label_fn, extra_class: str = "", show_unit: bool = True,
+    label_every: int = 1,
+) -> str:
+    """`label_every` thins out the time/day label under each bar (e.g. every
+    3rd hour instead of all ~15) - the hourly breakdown has enough bars that
+    a label under every single one reads as clutter; the daily trend's ~7
+    bars don't need it, so it defaults to showing every label."""
     present = [v for _, v in pairs if v is not None]
     chart_max = (max(present) * 1.15) if present and max(present) > 0 else 1
     bars = []
-    for x, value in pairs:
-        x_label = label_fn(x)
+    for i, (x, value) in enumerate(pairs):
+        x_label = label_fn(x) if i % label_every == 0 else ""
         if value is None:
             bars.append(
                 f'<div class="trend-bar-group"><span class="trend-value">–</span>'
@@ -292,7 +343,7 @@ def _render_metric_bars(pairs: list, unit: str, decimals: int, color_fn, label_f
             continue
         height_pct = max(4, round(value / chart_max * 100))
         color = color_fn(value)
-        value_str = f"{value:.{decimals}f}{unit}"
+        value_str = f"{value:.{decimals}f}{unit if show_unit else ''}"
         bars.append(
             f'<div class="trend-bar-group"><span class="trend-value">{value_str}</span>'
             f'<div class="trend-track"><div class="trend-bar" style="height:{height_pct}%;background:{color}"></div></div>'
@@ -306,16 +357,27 @@ def _day_label(date_str: str) -> str:
     return dt.date.fromisoformat(date_str).strftime("%a %d")
 
 
-def _render_trend_widget(widget_id: str, day_windows: list) -> str:
+def _unit_label(label: str, unit: str) -> str:
+    unit = unit.strip()
+    return f"{label} ({unit})" if unit else label
+
+
+def _render_trend_widget(widget_id: str, day_rows: list) -> str:
+    """`day_rows` is [(date_str, window, score), ...] - score is injected
+    into each window as "score_total" so the "Total score" metric can read
+    it via the same getter interface as every other metric. The unit (and
+    for the score metric, the "/10") lives on the dropdown option rather
+    than repeated over every one of the ~7 bars in the row."""
+    merged_days = [(date_str, {**window, "score_total": score}) for date_str, window, score in day_rows]
     charts, options = [], []
     for key, label, unit, decimals, getter, color_fn in METRICS:
-        pairs = [(date_str, getter(window)) for date_str, window in day_windows]
+        pairs = [(date_str, getter(window)) for date_str, window in merged_days]
         if not any(v is not None for _, v in pairs):
             continue
         hidden_attr = "" if not charts else " hidden"
-        bars_html = _render_metric_bars(pairs, unit, decimals, color_fn, _day_label)
+        bars_html = _render_metric_bars(pairs, unit, decimals, color_fn, _day_label, show_unit=False)
         charts.append(f'<div class="trend-chart" data-metric="{key}"{hidden_attr}>{bars_html}</div>')
-        options.append(f'<option value="{key}">{label}</option>')
+        options.append(f'<option value="{key}">{_unit_label(label, unit)}</option>')
 
     if not charts:
         return ""
@@ -338,7 +400,10 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
     """A collapsed-by-default per-card widget with an hourly (not daily)
     bar chart - only built for the soonest couple of days (see render()),
     since fetching/rendering this for the whole forecast window would be
-    a lot of markup for days that are still ~a week of uncertainty away."""
+    a lot of markup for days that are still ~a week of uncertainty away.
+    The unit lives on the dropdown option (e.g. "Wind speed (kt)") rather
+    than repeated over every one of the ~15 bars in the row, and only every
+    3rd bar gets a time label underneath - one per hour was too cluttered."""
     sorted_hours = [h for h in sorted(hours, key=lambda h: h["hour"]) if h["hour"] in HOURLY_DISPLAY_RANGE]
     charts, options = [], []
     for key, label, unit, decimals, getter, color_fn in HOURLY_METRICS:
@@ -346,9 +411,12 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
         if not any(v is not None for _, v in pairs):
             continue
         hidden_attr = "" if not charts else " hidden"
-        bars_html = _render_metric_bars(pairs, unit, decimals, color_fn, _hour_label, extra_class="trend-bars-hourly")
+        bars_html = _render_metric_bars(
+            pairs, unit, decimals, color_fn, _hour_label, extra_class="trend-bars-hourly", show_unit=False,
+            label_every=3,
+        )
         charts.append(f'<div class="trend-chart" data-metric="{key}"{hidden_attr}>{bars_html}</div>')
-        options.append(f'<option value="{key}">{label}</option>')
+        options.append(f'<option value="{key}">{_unit_label(label, unit)}</option>')
 
     if not charts:
         return ""
@@ -359,7 +427,7 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
     )
     return f"""
     <details class="trend-details" id="{widget_id}">
-      <summary class="trend-summary">{use("chart")}Hourly detail</summary>
+      <summary class="trend-summary">{use("chart")}Hourly breakdown</summary>
       <div class="trend-body">
         <select class="trend-select" onchange="{onchange}">{"".join(options)}</select>
         {"".join(charts)}
@@ -367,23 +435,140 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
     </details>"""
 
 
+def _render_filter_bar(results: list) -> str:
+    """Two checklist blocks under the header: which sports to show (only
+    activities actually present in this run's results, so it's never more
+    cluttered than what's relevant), and whether to include locations that
+    aren't easily reachable from Sydney by public transport (unticked by
+    default - see the `requires_driving` flag in locations.yaml). Both are
+    plain vertical bulleted lists rather than a wrapping row of pills, and
+    both persist client-side (localStorage) via the script at the bottom of
+    the page, so they survive a --serve Refresh and reopening a static
+    report."""
+    activity_keys = sorted({activity_key for _, _, activity_key, _, _ in results}, key=_activity_sort_key)
+    if not activity_keys:
+        return ""
+    options = []
+    for key in activity_keys:
+        icon = ACTIVITY_ICON.get(key, "hiking")
+        label = display_name(key)
+        options.append(
+            f'<label class="filter-option"><input type="checkbox" data-activity="{key}" checked>'
+            f"{use(icon)}{html.escape(label)}</label>"
+        )
+    return f"""
+    <div class="filter-bar" id="sport-filter">
+      <div class="filter-bar-inner">
+        <div class="filter-block filter-block-sports">
+          <span class="filter-label">Sports</span>
+          <div class="filter-options filter-options-grid">{"".join(options)}</div>
+        </div>
+        <div class="filter-block">
+          <span class="filter-label">Access</span>
+          <div class="filter-options">
+            <label class="filter-option"><input type="checkbox" id="driving-toggle">{use("car")}Include drive-only spots</label>
+          </div>
+        </div>
+      </div>
+    </div>"""
+
+
+_FILTER_SCRIPT = """
+<script>
+(function () {
+  var ACTIVITY_KEY = 'wp-activity-filter';
+  var DRIVING_KEY = 'wp-driving-included';
+  var checkboxes = Array.prototype.slice.call(document.querySelectorAll('#sport-filter input[data-activity]'));
+  var drivingToggle = document.getElementById('driving-toggle');
+  if (!checkboxes.length && !drivingToggle) return;
+
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function saveState(state) {
+    try { localStorage.setItem(ACTIVITY_KEY, JSON.stringify(state)); } catch (e) { /* private browsing etc - just don't persist */ }
+  }
+  function loadDriving() {
+    try { return localStorage.getItem(DRIVING_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveDriving(included) {
+    try { localStorage.setItem(DRIVING_KEY, included ? '1' : '0'); } catch (e) { /* private browsing etc */ }
+  }
+
+  function apply() {
+    var state = loadState();
+    var active = {};
+    checkboxes.forEach(function (cb) {
+      var key = cb.dataset.activity;
+      var checked = state.hasOwnProperty(key) ? state[key] : true;
+      cb.checked = checked;
+      active[key] = checked;
+      cb.closest('.filter-option').classList.toggle('is-active', checked);
+    });
+    var drivingIncluded = loadDriving();
+    if (drivingToggle) {
+      drivingToggle.checked = drivingIncluded;
+      drivingToggle.closest('.filter-option').classList.toggle('is-active', drivingIncluded);
+    }
+    document.querySelectorAll('main [data-activity]').forEach(function (el) {
+      var activityOk = active[el.dataset.activity] !== false;
+      var drivingOk = drivingIncluded || el.dataset.driving !== '1';
+      el.style.display = (activityOk && drivingOk) ? '' : 'none';
+    });
+    document.querySelectorAll('.day').forEach(function (day) {
+      var anyVisible = Array.prototype.slice.call(day.querySelectorAll('.card')).some(function (c) {
+        return c.style.display !== 'none';
+      });
+      day.style.display = anyVisible ? '' : 'none';
+    });
+    document.querySelectorAll('.trends-section').forEach(function (section) {
+      var anyVisible = Array.prototype.slice.call(section.querySelectorAll('.trend-card')).some(function (c) {
+        return c.style.display !== 'none';
+      });
+      section.style.display = anyVisible ? '' : 'none';
+    });
+  }
+
+  checkboxes.forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var state = loadState();
+      state[cb.dataset.activity] = cb.checked;
+      saveState(state);
+      apply();
+    });
+  });
+  if (drivingToggle) {
+    drivingToggle.addEventListener('change', function () {
+      saveDriving(drivingToggle.checked);
+      apply();
+    });
+  }
+
+  apply();
+})();
+</script>"""
+
+
 def _render_trends_section(results: list) -> str:
     groups: dict[tuple, list] = {}
-    for date_str, loc_name, activity_key, _result, window in results:
-        groups.setdefault((loc_name, activity_key), []).append((date_str, window))
+    for date_str, loc_name, activity_key, result, window in results:
+        groups.setdefault((loc_name, activity_key), []).append((date_str, window, result.get("score")))
     for rows in groups.values():
         rows.sort(key=lambda r: r[0])
 
     cards = []
-    for (loc_name, activity_key), day_windows in sorted(groups.items()):
+    # Grouped by activity category (see ACTIVITY_ORDER), same as the day card grids,
+    # rather than plain alphabetical, so a sport lands in the same place here too.
+    for (loc_name, activity_key), day_rows in sorted(groups.items(), key=lambda g: (_activity_sort_key(g[0][1]), g[0])):
         widget_id = f"trend-{_slug(loc_name)}-{activity_key}"
-        widget = _render_trend_widget(widget_id, day_windows)
+        widget = _render_trend_widget(widget_id, day_rows)
         if not widget:
             continue
         icon = ACTIVITY_ICON.get(activity_key, "hiking")
         label = display_name(activity_key)
+        driving_attr = "1" if day_rows and day_rows[0][1].get("requires_driving") else "0"
         cards.append(f"""
-        <div class="trend-card">
+        <div class="trend-card" data-activity="{activity_key}" data-driving="{driving_attr}">
           <div class="card-head">
             <span class="activity-icon">{use(icon)}</span>
             <div class="card-title"><h3>{html.escape(label)}</h3><p>{html.escape(loc_name)}</p></div>
@@ -407,10 +592,10 @@ CSS_BODY = """
   --ink:#12201f; --ink-soft:#45534f; --muted:#7c8a83;
   --line:rgba(18,32,31,0.12);
   --accent:#0b6e73; --accent-soft:#dcecec;
-  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b; --uv-extreme:#8b5cf6;
   --critical-soft:#fbe4e2; --warning-soft:#fdf0d6;
   --meter-track:#e4e8df;
-  /* Overall score grading (5 tiers, distinct from the --good/--warning/--serious/--critical
+  /* Overall score grading (5 tiers, distinct from the --good/--warning/--serious/--critical/--uv-extreme
      roles above which are reserved for UV severity and gate/alert banners). */
   --score-great:#0ca30c; --score-good:#6fa617; --score-acceptable:#d9a412;
   --score-marginal:#e8792f; --score-poor:#d03b3b;
@@ -453,6 +638,24 @@ a { color:var(--accent); }
 .masthead h1 { font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:.2px; }
 .tagline { margin:8px 0 0; color:var(--ink-soft); font-size:14.5px; max-width:65ch; }
 
+.filter-bar { background:var(--surface); border-bottom:1px solid var(--line); }
+.filter-bar-inner { max-width:1180px; margin:0 auto; padding:14px 24px; display:flex; gap:36px; flex-wrap:wrap; }
+.filter-block { min-width:160px; }
+.filter-block-sports { flex:1 1 480px; }
+.filter-label { display:block; font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:7px; }
+.filter-options { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+/* Sports has ~10+ entries - spread across columns instead of one tall column, so the
+   bar stays a couple of rows deep rather than something you have to scroll past. */
+.filter-options-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:4px 18px; }
+.filter-option {
+  display:inline-flex; align-items:center; gap:7px; font-size:13px; color:var(--ink-soft);
+  cursor:pointer; user-select:none; padding:1px 0;
+}
+.filter-option input { margin:0; accent-color:var(--accent); }
+.filter-option .icon-glyph { width:15px; height:15px; color:var(--muted); }
+.filter-option.is-active { color:var(--accent); font-weight:600; }
+.filter-option.is-active .icon-glyph { color:var(--accent); }
+
 main { max-width:1180px; margin:0 auto; padding:8px 24px 40px; }
 
 .day { margin-top:20px; }
@@ -470,23 +673,23 @@ main { max-width:1180px; margin:0 auto; padding:8px 24px 40px; }
 .day-weekday { font-size:12.5px; text-transform:uppercase; letter-spacing:.09em; opacity:.88; font-family:'Public Sans', sans-serif; font-weight:600; }
 
 .card-grid {
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:10px;
   background:var(--surface-2); border:1px solid var(--line); border-top:none; border-radius:0 0 8px 8px;
-  padding:16px;
+  padding:12px;
 }
 
-.card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:10px 13px; display:flex; flex-direction:column; gap:7px; }
 .card-gated { border-color:var(--critical); }
-.card-head { display:flex; align-items:flex-start; gap:12px; }
-.activity-icon .icon-glyph { width:38px; height:38px; color:var(--accent); flex:none; }
-.card-title { flex:1; min-width:0; padding-top:2px; }
-.card-title h3 { font-size:17px; font-weight:500; }
-.card-title p { margin:2px 0 0; font-size:12.5px; color:var(--ink-soft); }
-.score { font-family:'Zilla Slab', Georgia, serif; font-weight:700; font-size:30px; line-height:1; color:var(--ink); padding-left:4px; }
-.score::after { content:"/10"; font-size:13px; font-weight:600; color:var(--muted); margin-left:2px; font-family:'Public Sans', sans-serif; }
+.card-head { display:flex; align-items:flex-start; gap:9px; }
+.activity-icon .icon-glyph { width:28px; height:28px; color:var(--accent); flex:none; }
+.card-title { flex:1; min-width:0; padding-top:1px; }
+.card-title h3 { font-size:14.5px; font-weight:500; }
+.card-title p { margin:1px 0 0; font-size:11.5px; color:var(--ink-soft); }
+.score { font-family:'Zilla Slab', Georgia, serif; font-weight:700; font-size:23px; line-height:1; color:var(--ink); padding-left:4px; }
+.score::after { content:"/10"; font-size:11.5px; font-weight:600; color:var(--muted); margin-left:2px; font-family:'Public Sans', sans-serif; }
 
-.meter-row { display:flex; align-items:center; gap:10px; }
-.meter-track { flex:1; height:8px; border-radius:5px; background:var(--meter-track); overflow:hidden; }
+.meter-row { display:flex; align-items:center; gap:8px; }
+.meter-track { flex:1; height:6px; border-radius:5px; background:var(--meter-track); overflow:hidden; }
 .meter-fill { height:100%; border-radius:5px; transition:width .5s ease; }
 .meter-fill.status-great { background:var(--score-great); }
 .meter-fill.status-good { background:var(--score-good); }
@@ -503,13 +706,13 @@ main { max-width:1180px; margin:0 auto; padding:8px 24px 40px; }
 .dot.status-marginal { background:var(--score-marginal); }
 .dot.status-poor { background:var(--score-poor); }
 
-.chips { display:flex; flex-wrap:wrap; gap:7px 9px; }
+.chips { display:flex; flex-wrap:wrap; gap:5px 7px; }
 .chip {
-  display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft);
-  background:var(--surface-2); border:1px solid var(--line); border-radius:999px; padding:4px 11px 4px 8px;
+  display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--ink-soft);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:999px; padding:3px 9px 3px 6px;
   font-variant-numeric:tabular-nums;
 }
-.chip .icon-glyph { width:19px; height:19px; color:var(--muted); }
+.chip .icon-glyph { width:16px; height:16px; color:var(--muted); }
 
 .bonuses { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .pill, .pill-penalty {
@@ -520,15 +723,30 @@ main { max-width:1180px; margin:0 auto; padding:8px 24px 40px; }
 .pill-penalty { color:var(--critical); background:var(--critical-soft); }
 .pill .icon-glyph, .pill-penalty .icon-glyph { width:15px; height:15px; }
 
-.gate-banner, .alert-banner, .alert-banner-closed {
+.gate-banner {
   display:flex; align-items:center; gap:9px; border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600;
+  background:var(--critical-soft); color:var(--critical);
 }
-.gate-banner { background:var(--critical-soft); color:var(--critical); }
-.alert-banner { background:var(--warning-soft); color:var(--ink); font-weight:500; }
-.alert-banner-closed { background:var(--critical-soft); color:var(--ink); font-weight:500; }
-.gate-banner .icon-glyph, .alert-banner .icon-glyph, .alert-banner-closed .icon-glyph { width:20px; height:20px; flex:none; }
-.alert-banner .icon-glyph { color:#c9821a; }
-.alert-banner-closed .icon-glyph { color:var(--critical); }
+.gate-banner .icon-glyph { width:20px; height:20px; flex:none; }
+
+/* NPWS alert - a dropdown rather than an always-open banner (see _render_card), but the
+   summary row itself is always visible so you still see at a glance whether a card has
+   one, and how serious, without spending the space of the full text. */
+details.alert-details, details.alert-details-closed { margin-top:-1px; }
+.alert-details summary, .alert-details-closed summary {
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none; list-style:none;
+  font-size:12px; font-weight:600;
+}
+.alert-details summary { color:#c9821a; }
+.alert-details-closed summary { color:var(--critical); }
+.alert-details summary::-webkit-details-marker, .alert-details-closed summary::-webkit-details-marker { display:none; }
+.alert-details summary::before, .alert-details-closed summary::before { content:"\\25B8\\0020"; }
+.alert-details[open] summary::before, .alert-details-closed[open] summary::before { content:"\\25BE\\0020"; }
+.alert-details summary:focus-visible, .alert-details-closed summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.alert-details summary .icon-glyph, .alert-details-closed summary .icon-glyph { width:15px; height:15px; }
+.alert-details summary .icon-glyph { color:#c9821a; }
+.alert-details-closed summary .icon-glyph { color:var(--critical); }
+.alert-details p, .alert-details-closed p { margin:5px 0 0; font-size:12px; color:var(--ink-soft); }
 
 details.breakdown { margin-top:-2px; }
 details.breakdown summary {
@@ -538,10 +756,10 @@ details.breakdown summary::-webkit-details-marker { display:none; }
 details.breakdown summary::before { content:"\\25B8\\0020"; }
 details.breakdown[open] summary::before { content:"\\25BE\\0020"; }
 details.breakdown summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-details.breakdown table { width:100%; border-collapse:collapse; margin-top:8px; font-size:12px; }
-details.breakdown th, details.breakdown td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
-details.breakdown th { color:var(--muted); font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:.05em; }
-details.breakdown td:nth-child(3), details.breakdown td:nth-child(4) { font-variant-numeric:tabular-nums; }
+details.breakdown table { width:100%; border-collapse:collapse; margin-top:6px; font-size:10px; table-layout:fixed; }
+details.breakdown th, details.breakdown td { text-align:left; padding:2px 4px; border-bottom:1px solid var(--line); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+details.breakdown th { color:var(--muted); font-weight:600; text-transform:uppercase; font-size:9px; letter-spacing:.04em; }
+details.breakdown td:nth-child(2), details.breakdown td:nth-child(3), details.breakdown td:nth-child(4) { font-variant-numeric:tabular-nums; }
 
 .trends-section { margin-top:28px; }
 .trends-head {
@@ -568,7 +786,7 @@ details.breakdown td:nth-child(3), details.breakdown td:nth-child(4) { font-vari
 .trend-bar { width:100%; border-radius:4px 4px 0 0; min-height:2px; }
 .trend-day { font-size:9.5px; color:var(--muted); margin-top:5px; text-transform:uppercase; letter-spacing:.03em; }
 
-/* Hourly detail: a collapsed-by-default per-card widget, same bar mechanics
+/* Hourly breakdown: a collapsed-by-default per-card widget, same bar mechanics
    as the daily trend but with one bar per hour - horizontally scrollable
    rather than squeezed, so every hour stays readable. */
 details.trend-details { margin-top:-2px; }
@@ -608,7 +826,7 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
     """`results` is main.py's list of (date_str, location_name, activity_key,
     result, window_ctx) tuples. `hourly_lookup` is main.py's
     {(location_name, date_str): [hour_record, ...]} - used for the per-card
-    "Hourly detail" widget, built only for the soonest
+    "Hourly breakdown" widget, built only for the soonest
     `SOONEST_DAYS_FOR_HOURLY` days (rendering it for the whole forecast
     window would be a lot of markup for days still a week of uncertainty
     away). `live=True` (used by `--serve`) adds a Refresh button that
@@ -619,7 +837,10 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
     for date_str, loc_name, activity_key, result, window in results:
         by_date.setdefault(date_str, []).append((loc_name, activity_key, result, window))
     for rows in by_date.values():
-        rows.sort(key=lambda r: r[2]["score"] or 0, reverse=True)
+        # Grouped by activity category (see ACTIVITY_ORDER) rather than sorted purely by
+        # score, so the same sport lands in the same place on the page every day instead
+        # of jumping around as scores shift - score still breaks ties within a category.
+        rows.sort(key=lambda r: (_activity_sort_key(r[1]), -(r[2]["score"] or 0)))
 
     sorted_dates = sorted(by_date)
     soonest_dates = set(sorted_dates[:SOONEST_DAYS_FOR_HOURLY])
@@ -629,6 +850,7 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
         for i, d in enumerate(sorted_dates)
     )
     trends = _render_trends_section(results)
+    filter_bar = _render_filter_bar(results)
     css = _font_faces() + CSS_BODY
 
     refresh_button = (
@@ -652,7 +874,9 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
   </div>
   {refresh_button}
 </div></header>
+{filter_bar}
 <main>{sections if sections else '<p style="padding:32px 0;color:var(--muted)">No results for the current filters.</p>'}{trends}</main>
 <footer><p>Data: Open-Meteo (weather + marine forecast). Scores are a planning aid, not a safety authority - always check current conditions, advisories, and your own judgement before heading out.</p></footer>
+{_FILTER_SCRIPT}
 </body>
 </html>"""

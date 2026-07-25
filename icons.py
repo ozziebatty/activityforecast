@@ -15,8 +15,10 @@ ACTIVITY_ICONS = {
     "kayaking_sea": "\U0001F6F6",   # canoe
     "kayaking_freshwater": "\U0001F6F6",
     "kitesurfing": "\U0001FA81",    # kite
+    "kite_practice": "\U0001FA81",  # kite (land-based practice, same glyph)
     "sailing": "\U000026F5",        # sailboat
     "city_touring": "\U0001F3D9",   # cityscape
+    "beach_day": "\U0001F3D6",      # beach with umbrella
 }
 
 RESET = "\033[0m"
@@ -50,7 +52,7 @@ def uv_summary(uv_max) -> str:
     if uv_max is None:
         return ""
     if uv_max >= 11:
-        dot = "\U0001F534"  # extreme
+        dot = "\U0001F7E3"  # extreme - purple, matching the standard UV Index scale
     elif uv_max >= 8:
         dot = "\U0001F7E0"  # very high
     elif uv_max >= 6:
@@ -62,10 +64,10 @@ def uv_summary(uv_max) -> str:
 
 def condition_line(window: dict) -> str:
     parts = [sky_summary(window)]
-    if window.get("temperature_avg") is not None:
-        parts.append(f"\U0001F321️ {window['temperature_avg']:.0f}°C")
+    if window.get("temperature_max") is not None:
+        parts.append(f"\U0001F321️ {window['temperature_max']:.0f}°C")
     if window.get("wind_speed_max") is not None:
-        parts.append(f"\U0001F4A8 {window['wind_speed_max']:.0f}km/h")
+        parts.append(f"\U0001F4A8 {window['wind_speed_max'] / 1.852:.0f}kt")
     uv = uv_summary(window.get("uv_max"))
     if uv:
         parts.append(uv)

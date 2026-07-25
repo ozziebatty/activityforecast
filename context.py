@@ -125,13 +125,16 @@ def build_day_context(
     offshore_directions=None,
     pollution_advisory=False,
     whale_watching=False,
+    requires_driving=False,
 ) -> dict:
     """`day` is one entry from open_meteo.build_hourly_days(). Returns
     {"window": {...}, "outside_window": {...}, "full_day": {...}} with
     day-level (month, recent rain) and location-level (wind direction,
-    advisory, whale watching) fields merged into all three, so a
-    factor/gate/bonus can look up any variable regardless of which `scope`
-    it uses.
+    advisory, whale watching, driving-required) fields merged into all
+    three, so a factor/gate/bonus can look up any variable regardless of
+    which `scope` it uses. `requires_driving` isn't used by any scoring
+    rule - it just rides along so html_report.py can filter it in the
+    report's "Driving" checkbox.
     """
     start = time_window.get("start", DEFAULT_TIME_WINDOW["start"])
     end = time_window.get("end", DEFAULT_TIME_WINDOW["end"])
@@ -153,6 +156,7 @@ def build_day_context(
         "rain_24_to_72h": max(0.0, rain_prior_72h - rain_prior_24h),
         "pollution_advisory": 1 if pollution_advisory else 0,
         "whale_watching_spot": 1 if whale_watching else 0,
+        "requires_driving": 1 if requires_driving else 0,
     }
 
     for scope in scopes.values():
