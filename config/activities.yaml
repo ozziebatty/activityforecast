@@ -700,11 +700,11 @@ kite_practice:   # land-based trainer-kite handling practice (no board, no water
                  # offshore-wind gate at all. Good on open grass (Parramatta Park) or open beach sand.
   time_window: {start: 10, end: 16}
   factors:
-    - variable: wind_speed_max        # optimum ~12, starts scoring at 8 - trainer kites want much less
-      ideal_min: 10                   # wind than a full kitesurfing rig, and get twitchy/hard to handle well past this
-      ideal_max: 14
-      hard_min: 8
-      hard_max: 22
+    - variable: wind_speed_max        # optimum ~12kt, starts scoring at 8kt - trainer kites want much less
+      ideal_min: 19                   # wind than a full kitesurfing rig, and get twitchy/hard to handle well past
+      ideal_max: 26                   # this. wind_speed_max is km/h (Open-Meteo's raw unit, same as every other
+      hard_min: 15                    # activity's wind factor) - these are the kt figures above converted
+      hard_max: 41                    # (x1.852), not km/h numbers in their own right.
       weight: 0.35
     - variable: gust_ratio             # steady wind = predictable, forgiving practice; gusty is what
       ideal_max: 1.4                   # actually catches beginners out, not raw wind speed
