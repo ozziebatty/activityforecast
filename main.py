@@ -45,10 +45,12 @@ from scoring import score_activity
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--days", type=int, default=7,
-        help="How many days ahead to score (default: 7). Open-Meteo gives real weather data out to "
+        "--days", type=int, default=10,
+        help="How many days ahead to score (default: 10). Open-Meteo gives real weather data out to "
         "16 days, but marine data (wave/swell/sea-temp) thins out to nulls after ~9 - coastal "
-        "activities beyond that just lose those factors rather than erroring.",
+        "activities beyond that just lose those factors rather than erroring. --days 16 gets the "
+        "full window at the cost of a bigger report.html (hourly breakdown is now rendered for "
+        "every day, not just the soonest couple, so more days means more markup).",
     )
     parser.add_argument("--activity", help="Only show activities whose key contains this text (e.g. kayaking, surfing)")
     parser.add_argument("--location", help="Only show locations whose name contains this text")

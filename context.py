@@ -30,6 +30,16 @@ DEFAULT_TIME_WINDOW = {"start": 6, "end": 18}
 # Nov-Apr - when sustained onshore wind is most likely to blow bluebottles onto NSW beaches.
 BLUEBOTTLE_SEASON_MONTHS = {11, 12, 1, 2, 3, 4}
 
+# Heavy/recent rain drives river-mouth runoff (turbid water, displaced baitfish) that's a
+# well-known correlate of elevated shark activity near NSW beaches - mm thresholds for
+# "today's rain", "rain in the last 24h", and "rain in the last 72h" respectively.
+SHARK_RUNOFF_RAIN_MM = 10
+SHARK_RUNOFF_PRIOR_24H_MM = 15
+SHARK_RUNOFF_PRIOR_72H_MM = 25
+# Jun-Oct - peak whale migration. Whale carcasses draw sharks in close to shore, a pattern
+# NSW authorities specifically warn about - matches activities.yaml's "whales peak" bonus.
+SHARK_WHALE_CARCASS_MONTHS = {6, 7, 8, 9, 10}
+
 
 def _clean(values):
     return [v for v in values if v is not None]
@@ -169,6 +179,19 @@ def build_day_context(
         in_season = day["month"] in BLUEBOTTLE_SEASON_MONTHS
         onshore_breeze = not scope["offshore_wind_present"] and (scope.get("wind_speed_avg") or 0) > 15
         scope["bluebottle_risk"] = 1 if (in_season and onshore_breeze) else 0
+        # Heuristic proxy, not a live feed - see SHARK_RUNOFF_*/SHARK_WHALE_CARCASS_MONTHS
+        # above. The runoff trigger isn't location-gated (a big rain event raises risk
+        # everywhere, harbour/river spots included, just usually less so than an open
+        # surf beach - see the smaller bonus weight used for kayaking in activities.yaml);
+        # the whale-carcass trigger only fires at spots that actually front open coastal
+        # water, same as the whale-watching bonus itself.
+        runoff_risk = (
+            (scope.get("rain_total") or 0) > SHARK_RUNOFF_RAIN_MM
+            or rain_prior_24h > SHARK_RUNOFF_PRIOR_24H_MM
+            or rain_prior_72h > SHARK_RUNOFF_PRIOR_72H_MM
+        )
+        whale_carcass_risk = whale_watching and day["month"] in SHARK_WHALE_CARCASS_MONTHS
+        scope["shark_risk"] = 1 if (runoff_risk or whale_carcass_risk) else 0
         scope.update(shared)
 
     return scopes

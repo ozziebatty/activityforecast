@@ -30,9 +30,11 @@ Writes a self-contained `report.html` (data and fonts embedded, no network
 needed to view it) and prints its path - open it in a browser. Two
 checklists sit under the header, each a plain vertical list of ticks rather
 than a row of pills: **Sports** (only the activities that actually appear
-in this run's results) and **Access** (a single "Include drive-only spots"
-box). Untick a sport and its cards disappear from every day (a day
-collapses entirely if nothing's left in it); leave Access unticked (the
+in this run's results, with kayaking unticked by default - see
+`DEFAULT_HIDDEN_ACTIVITIES` in html_report.py) and **Access** (a single
+"Include drive-only spots" box). Untick a sport and its cards disappear
+from every day (a day collapses entirely if nothing's left in it); leave
+Access unticked (the
 default) and any location flagged `requires_driving` in locations.yaml -
 remote national parks, beach towns with no direct train/bus/ferry - is
 hidden too, since most day-trip planning starts from "what can I get to on
@@ -59,16 +61,16 @@ temperature also on the dropdown (unit in the dropdown label, e.g. "Wind
 speed (kt)" or "Total score (/10)" - not repeated over every bar), all
 plotted across the fetched days.
 
-**Hourly breakdown.** Cards for today and tomorrow get an extra "Hourly
-breakdown" dropdown with the same metric picker but hour-by-hour bars
-instead of one-per-day (chance of rain is the default) - useful for seeing
-exactly when the rain or wind picks up. Shown as 7am-9pm, all on one row
-with no scrolling needed - same dropdown-label-not-per-bar unit treatment
-as above, and only every 3rd bar gets a time label underneath (one per hour
-across ~15 bars read as clutter). It's only built for the soonest 2 days
-(`SOONEST_DAYS_FOR_HOURLY` in html_report.py) to keep the file size and
-card length sane; a week of hourly bars for every card would be a lot of
-scrolling for data that's still uncertain that far out anyway.
+**Hourly breakdown.** Every card gets an extra "Hourly breakdown" dropdown
+with the same metric picker but hour-by-hour bars instead of one-per-day
+(chance of rain is the default) - useful for seeing exactly when the rain
+or wind picks up. Shown as 7am-9pm, all on one row with no scrolling
+needed - same dropdown-label-not-per-bar unit treatment as above, with a
+bare hour number (no am/pm) under every single bar; bars and their labels
+render as two separate rows so a label can never distort the bar above
+it. Built for every day in the forecast, not just the next couple - how
+much to trust an hourly forecast a week or more out is a judgement call
+for whoever's reading it, not something to decide by hiding the data.
 
 **Wind speed** is shown in knots everywhere (chips, condition line, trend
 and hourly wind charts) - the unit sailing/kite/surf forecasts are normally
@@ -90,7 +92,7 @@ shown as both the meter-fill colour and the status dot/label next to it.
 Options:
 
 ```
-python main.py --days 7                 # look further ahead (default 7, see note below)
+python main.py --days 14                # look further ahead (default 10, up to 16, see note below)
 python main.py --activity surfing        # only activities whose key contains this text
 python main.py --location manly          # only locations matching this text
 python main.py --min-score 70            # hide anything below this score (out of 100 internally)
@@ -131,7 +133,8 @@ temperature) only goes out to about 9 days before it turns to nulls - so
 `--days 16` works fine for inland spots (climbing/hiking), but coastal
 activities beyond ~9 days just quietly lose their wave/sea-temp factors
 (they still score on wind/rain/temp) rather than erroring. The default of
-7 sits safely inside both ceilings.
+10 sits just past the marine ceiling, trading a day or two of wave/sea-temp
+data at the tail for a meaningfully longer outlook everywhere else.
 
 **What `--serve` actually needs.** It's Python's built-in `http.server`
 module - no extra packages beyond what's already in requirements.txt, no
@@ -248,9 +251,16 @@ rather than bespoke curves per sport.
   locations.yaml is a manual flag you set after checking
   [beachwatch.nsw.gov.au](https://beachwatch.nsw.gov.au) yourself - it's a
   clean hook to wire up a real feed later if you find a stable one.
-- **No live shark data.** NSW's tagged-shark listening network (SharkSmart)
-  is real, but there's no documented public API for it - only the app/site
-  UI - so it isn't integrated.
+- **Shark risk is a heuristic, not a sighting feed.** NSW's tagged-shark
+  listening network (SharkSmart) is real, but there's no documented public
+  API for it - only the app/site UI. `shark_risk` in context.py instead
+  flags heavy/recent rain (river-mouth runoff and turbidity are a
+  well-known correlate of elevated shark activity) or, at a
+  `whale_watching` spot, peak whale migration (Jun-Oct - carcasses draw
+  sharks in close to shore, a specific pattern authorities warn about).
+  Applied as a bonus/penalty on beach_day, surfing, snorkelling, scuba and
+  kayaking (a smaller penalty for kayaking - real but lower exposure than
+  swimming/surfing).
 - **No true wind/storm probability.** Open-Meteo's free tier gives
   deterministic hourly forecasts plus one genuine probability field,
   `precipitation_probability`. That's what every `risk_factors` block
@@ -310,12 +320,18 @@ rather than bespoke curves per sport.
   beyond a storm.
 - **Kite practice** is trainer-kite handling on land - no board, no water -
   so it wants much lighter wind than kitesurfing proper: ideal is a narrow
-  band around 8-14 km/h, scoring starts at 8 and falls off again by 22,
-  since a trainer kite gets twitchy and hard to handle well past that. Set
-  up at Parramatta Park (open riverside parkland, no marine data needed)
-  plus Yarra Bay (Kurnell) and Cronulla/Wanda, reusing the
+  band around 10-14kt, scoring starts at 8kt and falls off again by 22kt,
+  since a trainer kite gets twitchy and hard to handle well past that
+  (`wind_speed_max` is scored in km/h internally like every other
+  activity's wind factor, so activities.yaml stores those kt figures
+  converted x1.852 - see the comment on that factor if you're retuning it).
+  Set up at Parramatta Park (open riverside parkland, no marine data
+  needed) plus Yarra Bay (Kurnell) and Cronulla/Wanda, reusing the
   kitesurfing-suitable beaches already configured rather than guessing at
   new ones.
+- **Parramatta River** is a flat-water kayaking spot (`kayaking_freshwater`)
+  right by Parramatta Park - no marine data needed, same as the harbour/bay
+  kayaking spots.
 - **Surfing's time window is daytime** (9am-4pm default), not a dawn-patrol
   check - loosen or shift it per-location in locations.yaml if you actually
   surf at first light.

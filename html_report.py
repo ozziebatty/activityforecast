@@ -26,8 +26,12 @@ from svg_icons import sprite_defs, use
 FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
 
 DISPLAY_NAMES = {
-    "kayaking_sea": "kayaking (sea)",
-    "kayaking_freshwater": "kayaking (sheltered)",
+    # Same display name for both - kayaking_sea (strict) and kayaking_freshwater (relaxed)
+    # are two different scoring profiles picked per-location (see locations.yaml), not two
+    # activities a reader needs to know about. _render_filter_bar merges any activity keys
+    # that share a display name into one checkbox for exactly this reason.
+    "kayaking_sea": "kayaking",
+    "kayaking_freshwater": "kayaking",
     "kite_practice": "kite practice",
     "beach_day": "beach day",
 }
@@ -70,9 +74,14 @@ BONUS_ICON = {
     "flat water": "wave",
     "bluebottles likely": "bluebottle",
     "bluebottles likely (peak)": "bluebottle",
+    "shark risk": "shark",
 }
 
 STATUS_LABELS = {"great": "Great", "good": "Good", "acceptable": "Acceptable", "marginal": "Marginal", "poor": "Poor"}
+
+# Kayaking still scores fully and shows up if ticked back on - just unticked by default in
+# the Sports checklist, since it's rarely what's being checked for day to day.
+DEFAULT_HIDDEN_ACTIVITIES = {"kayaking_sea", "kayaking_freshwater"}
 
 # Short display labels for the scoring breakdown's factor column - the raw
 # config/open_meteo variable names (e.g. "sea_surface_temperature_avg") ran
@@ -402,7 +411,12 @@ def _render_metric_bars(
 
 
 def _day_label(date_str: str) -> str:
-    return dt.date.fromisoformat(date_str).strftime("%a %d")
+    # Weekday over date, not side by side ("Sat" / "15" stacked, not "Sat 15") - a 2-line
+    # label needs roughly a third of the width a 1-line one does, which is what actually
+    # fixes the truncation (a wider chart column alone couldn't do it without either
+    # overflowing narrow phones or capping how many days fit per row).
+    d = dt.date.fromisoformat(date_str)
+    return f'{d.strftime("%a")}<br>{d.day}'
 
 
 def _unit_label(label: str, unit: str) -> str:
@@ -486,22 +500,35 @@ def _render_hourly_widget(widget_id: str, hours: list) -> str:
 def _render_filter_bar(results: list) -> str:
     """Two checklist blocks under the header: which sports to show (only
     activities actually present in this run's results, so it's never more
-    cluttered than what's relevant), and whether to include locations that
-    aren't easily reachable from Sydney by public transport (unticked by
-    default - see the `requires_driving` flag in locations.yaml). Both are
-    plain vertical bulleted lists rather than a wrapping row of pills, and
+    cluttered than what's relevant - a couple, currently just kayaking, start
+    unticked by default, see DEFAULT_HIDDEN_ACTIVITIES), and whether to
+    include locations that aren't easily reachable from Sydney by public
+    transport (unticked by default - see the `requires_driving` flag in
+    locations.yaml). Both are plain vertical bulleted lists rather than a
+    wrapping row of pills, and
     both persist client-side (localStorage) via the script at the bottom of
     the page, so they survive a --serve Refresh and reopening a static
-    report."""
+    report.
+
+    Activity keys that share a display name (kayaking_sea/kayaking_freshwater
+    both just show as "kayaking" - see DISPLAY_NAMES) collapse into a single
+    checkbox rather than one per underlying key - which scoring profile
+    applies is picked per-location, not something a reader needs to see or
+    tick separately. That checkbox's data-activity carries every key it
+    covers, space-separated; the filter script splits it back out."""
     activity_keys = sorted({activity_key for _, _, activity_key, _, _ in results}, key=_activity_sort_key)
     if not activity_keys:
         return ""
-    options = []
+    groups: dict[str, list] = {}
     for key in activity_keys:
-        icon = ACTIVITY_ICON.get(key, "hiking")
-        label = display_name(key)
+        groups.setdefault(display_name(key), []).append(key)
+    options = []
+    for label, keys in groups.items():
+        icon = ACTIVITY_ICON.get(keys[0], "hiking")
+        keys_attr = " ".join(keys)
+        checked_attr = "" if all(k in DEFAULT_HIDDEN_ACTIVITIES for k in keys) else " checked"
         options.append(
-            f'<label class="filter-option"><input type="checkbox" data-activity="{key}" checked>'
+            f'<label class="filter-option"><input type="checkbox" data-activity="{keys_attr}"{checked_attr}>'
             f"{use(icon)}{html.escape(label)}</label>"
         )
     return f"""
@@ -530,6 +557,13 @@ _FILTER_SCRIPT = """
   var drivingToggle = document.getElementById('driving-toggle');
   if (!checkboxes.length && !drivingToggle) return;
 
+  // Some activities (e.g. kayaking) render unticked by default (see DEFAULT_HIDDEN_ACTIVITIES
+  // in html_report.py) - capture each checkbox's server-rendered `checked` state here, before
+  // apply() overwrites it, so a first-time visitor (no saved state yet) gets that default
+  // rather than a hardcoded "everything on".
+  var defaults = {};
+  checkboxes.forEach(function (cb) { defaults[cb.dataset.activity] = cb.checked; });
+
   function loadState() {
     try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '{}'); } catch (e) { return {}; }
   }
@@ -547,10 +581,10 @@ _FILTER_SCRIPT = """
     var state = loadState();
     var active = {};
     checkboxes.forEach(function (cb) {
-      var key = cb.dataset.activity;
-      var checked = state.hasOwnProperty(key) ? state[key] : true;
+      var groupKey = cb.dataset.activity;   // one or more space-separated activity keys
+      var checked = state.hasOwnProperty(groupKey) ? state[groupKey] : defaults[groupKey];
       cb.checked = checked;
-      active[key] = checked;
+      groupKey.split(' ').forEach(function (k) { active[k] = checked; });
       cb.closest('.filter-option').classList.toggle('is-active', checked);
     });
     var drivingIncluded = loadDriving();
@@ -694,8 +728,8 @@ a { color:var(--accent); }
 .filter-options { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
 /* Sports has ~10+ entries - spread across columns instead of one tall column, so the
    bar stays a couple of rows deep rather than something you have to scroll past. Columns
-   are wide enough for the longest label ("kayaking (sheltered)") on one line - narrower
-   columns let long labels wrap to a second line, which made some rows taller than others. */
+   are wide enough for the longest label ("city touring") on one line - narrower columns
+   let long labels wrap to a second line, which made some rows taller than others. */
 .filter-options-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:6px 18px; }
 .filter-option {
   display:flex; align-items:center; gap:7px; font-size:13px; color:var(--ink-soft);
@@ -823,7 +857,14 @@ details.breakdown td:nth-child(2), details.breakdown td:nth-child(3), details.br
 }
 .trends-head::-webkit-details-marker { display:none; }
 .trends-head .icon-glyph { width:22px; height:22px; color:var(--accent); }
-.trends-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; padding-top:16px; }
+/* Back to 340px (not the 420px this briefly went to) - fits ~3 cards per row at typical
+   desktop widths rather than 2, which read as too spaced out. The longer forecast (up to
+   16 days) no longer needs the extra card width to avoid truncating the day label now that
+   the label itself is 2-line ("Sat" over "15", see _day_label) instead of 1-line "Sat 15" -
+   verified with a headless-browser measurement down to a 320px-wide phone, same as before.
+   min(340px, 100%) rather than a bare 340px so a narrow phone can still shrink the single
+   column to fit, instead of forcing the whole page to scroll horizontally. */
+.trends-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap:14px; padding-top:16px; }
 .trend-card { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
 
 .trend-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
@@ -847,7 +888,7 @@ details.breakdown td:nth-child(2), details.breakdown td:nth-child(3), details.br
 .trend-labels-row { display:flex; gap:6px; }
 .trend-day {
   flex:1; min-width:0; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;
+  font-size:9px; line-height:1.25; color:var(--muted); text-transform:uppercase; letter-spacing:.02em;
 }
 
 /* Hourly breakdown: a collapsed-by-default per-card widget, same bar mechanics
@@ -870,6 +911,15 @@ details.trend-details[open] .trend-summary::before { content:"\\25BE\\0020"; }
 .trend-bars-hourly .trend-day { font-size:7px; }
 .trend-bars-hourly .trend-track { max-width:none; }
 
+/* At the narrowest phone widths (~320-360px), a single trend-card column shrinks enough
+   that even the 2-line "Sat / 15" day label was clipping by a couple of px - a tighter
+   bar gap plus a touch smaller font closes that last gap without affecting anything
+   wider (verified with a headless-browser measurement down to 320px). */
+@media (max-width: 400px) {
+  .trend-bars-row, .trend-labels-row { gap:3px; }
+  .trend-day { font-size:8px; }
+}
+
 footer { max-width:1180px; margin:26px auto 0; padding:0 24px; color:var(--muted); font-size:12px; }
 
 .icon-glyph { fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; width:20px; height:20px; flex:none; }
@@ -883,19 +933,17 @@ footer { max-width:1180px; margin:26px auto 0; padding:0 24px; color:var(--muted
 """
 
 
-SOONEST_DAYS_FOR_HOURLY = 2
-
-
 def render(results: list, generated_label: str, hourly_lookup: dict | None = None, live: bool = False) -> str:
     """`results` is main.py's list of (date_str, location_name, activity_key,
     result, window_ctx) tuples. `hourly_lookup` is main.py's
     {(location_name, date_str): [hour_record, ...]} - used for the per-card
-    "Hourly breakdown" widget, built only for the soonest
-    `SOONEST_DAYS_FOR_HOURLY` days (rendering it for the whole forecast
-    window would be a lot of markup for days still a week of uncertainty
-    away). `live=True` (used by `--serve`) adds a Refresh button that
-    reloads the page - meaningless on a static file (there's no server to
-    hit for fresh data), so it's omitted there."""
+    "Hourly breakdown" widget, built for every day the caller fetched hourly
+    data for (main.py fetches it for every day in the forecast window, not
+    just the soonest few - forecast accuracy for the later days is the
+    reader's call to weigh, not something to hide the data over). `live=True`
+    (used by `--serve`) adds a Refresh button that reloads the page -
+    meaningless on a static file (there's no server to hit for fresh data),
+    so it's omitted there."""
     hourly_lookup = hourly_lookup or {}
     by_date: dict[str, list] = {}
     for date_str, loc_name, activity_key, result, window in results:
@@ -907,10 +955,8 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
         rows.sort(key=lambda r: (_activity_sort_key(r[1]), -(r[2]["score"] or 0)))
 
     sorted_dates = sorted(by_date)
-    soonest_dates = set(sorted_dates[:SOONEST_DAYS_FOR_HOURLY])
-    hourly_for_soonest = {k: v for k, v in hourly_lookup.items() if k[1] in soonest_dates}
     sections = "".join(
-        _render_day(d, by_date[d], open_by_default=(i == 0), hourly_lookup=hourly_for_soonest)
+        _render_day(d, by_date[d], open_by_default=(i == 0), hourly_lookup=hourly_lookup)
         for i, d in enumerate(sorted_dates)
     )
     trends = _render_trends_section(results)
@@ -926,14 +972,14 @@ def render(results: list, generated_label: str, hourly_lookup: dict | None = Non
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NSW Outdoor Conditions</title>
+<title>NSW Activity Forecast</title>
 <style>{css}</style>
 </head>
 <body>
 {sprite_defs()}
 <header class="masthead"><div class="masthead-inner">
   <div class="masthead-text">
-    <h1>NSW Outdoor Conditions</h1>
+    <h1>NSW Activity Forecast</h1>
     <p class="tagline">Live conditions scored per activity and spot, weighted to each activity's actual time-of-day window. Generated {html.escape(generated_label)}.</p>
   </div>
   {refresh_button}

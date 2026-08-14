@@ -210,6 +210,12 @@
   activities:
     kite_practice: {}   # large open riverside parkland - room to fly a trainer kite with no water/board involved
 
+- name: Parramatta River
+  lat: -33.8149
+  lon: 151.0011
+  activities:
+    kayaking_freshwater: {}   # flat, sheltered urban river - easy paddling, no marine data needed
+
 - name: Jervis Bay (Hyams Beach)
   lat: -35.0997
   lon: 150.7086

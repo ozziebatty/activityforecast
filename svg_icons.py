@@ -11,10 +11,10 @@ Weather/stat glyphs (sun, cloud, rain, storm, thermometer, wind, wave,
 bluebottle) carry their own fixed colour baked into the symbol, rather
 than inheriting `currentColor` - they read as "the sun", "a thermometer",
 etc, not as generic outline marks, and stay legible in both themes
-without per-instance overrides. Activity pictograms (and the whale bonus
-glyph, which sits on a coloured pill rather than needing to read as its
-own colour) stay currentColor so they pick up the accent tint from their
-surroundings.
+without per-instance overrides. Activity pictograms (and small bonus/
+penalty glyphs like whale and shark, which sit on a coloured pill rather
+than needing to read as their own colour) stay currentColor so they pick
+up the accent tint from their surroundings.
 """
 
 from __future__ import annotations
@@ -183,6 +183,11 @@ SYMBOLS: dict[str, str] = {
         <path d="M12 12.5c0 3.2 1 4.3 1 7.5"/>
         <path d="M16 12c0 3-1 4-1 7"/>
         </g>
+    """,
+    "shark": """
+        <path d="M2 15c3-2 6-2 9 0s6 2 9 0" fill="none"/>
+        <path d="M10 14.5c.6-3.4 1.7-5.5 2.8-5.5s1.5 2.6.6 5.5" fill="currentColor" fill-opacity="0.15"/>
+        <path d="M12.4 14.3c1.6.7 3.2.5 4.4-.5" fill="none"/>
     """,
     "refresh": """
         <path d="M20 11A8 8 0 1 0 19.5 16"/>

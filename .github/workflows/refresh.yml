@@ -33,7 +33,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: |
           mkdir -p dist
-          python main.py --out dist/index.html --days 7
+          python main.py --out dist/index.html --days 10
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import datetime as dt
 import time
+from zoneinfo import ZoneInfo
 
 import requests
+
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 MARINE_URL = "https://marine-api.open-meteo.com/v1/marine"
@@ -63,7 +66,17 @@ def _fetch_hourly(url: str, lat: float, lon: float, forecast_days: int, variable
         "forecast_days": forecast_days,
     }
     for attempt in range(1, _MAX_ATTEMPTS + 1):
-        resp = requests.get(url, params=params, timeout=20)
+        try:
+            resp = requests.get(url, params=params, timeout=25)
+        except requests.exceptions.RequestException:
+            # A read timeout/connection error raises before any response arrives, so it
+            # never reaches the status-code retry check below - without this, one slow
+            # request anywhere in the batch failed outright on attempt 1 with no retry at
+            # all, unlike a 429/502/503/504 (which at least got a response to retry on).
+            if attempt == _MAX_ATTEMPTS:
+                raise
+            time.sleep(1.5 * attempt)
+            continue
         transient = resp.status_code in _RETRY_STATUS_CODES
         if not transient or attempt == _MAX_ATTEMPTS:
             resp.raise_for_status()
@@ -105,7 +118,12 @@ def build_hourly_days(location: dict, forecast_days: int) -> dict[str, dict]:
     }
 
     sorted_dates = sorted(hours_by_date)
-    today_str = dt.date.today().isoformat()
+    # Sydney's date, not the machine's - GitHub Actions runners default to UTC, and Sydney
+    # (UTC+10/+11) rolls over to the next calendar date 10-11h before UTC does. Using the
+    # naive local date there meant the boundary between "history" and "today" was off by a
+    # day for a chunk of each day, silently dropping the actual next day from the results
+    # (while an already-past day lingered as if it were still current).
+    today_str = dt.datetime.now(SYDNEY_TZ).date().isoformat()
     today_index = sorted_dates.index(today_str) if today_str in sorted_dates else PAST_DAYS
 
     days = {}
