@@ -52,6 +52,7 @@ _OPS = {
     "==": lambda a, b: a == b,
     "!=": lambda a, b: a != b,
     "in": lambda a, b: a in b,
+    "not in": lambda a, b: a not in b,
 }
 
 # Maps a named sensitivity tier to the risk curve's exponent. Activities can

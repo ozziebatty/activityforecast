@@ -4,10 +4,10 @@ Pulls live hourly forecast data from [Open-Meteo](https://open-meteo.com)
 (free, no API key) and scores each configured location/activity combination
 for the next few days, so you can see at a glance where's worth heading
 this weekend. Covers hiking, climbing, kite practice (land-based
-trainer-kite handling), city touring, beach day, surfing, sailing,
-kitesurfing, kayaking (sea and sheltered), snorkelling and scuba across the
-Blue Mountains, Sydney, and further afield (Jervis Bay, South West Rocks
-and a handful of other national parks).
+trainer-kite handling), city touring, beach day, surfing, whale
+watching (boat), kitesurfing, kayaking (sea and sheltered), snorkelling
+and scuba across the Blue Mountains, Sydney, Ku-ring-gai Chase and the
+Royal, plus Jervis Bay further afield.
 
 Open-Meteo was picked because on top of standard weather it also serves
 marine data (wave height, swell height/period, sea surface temperature)
@@ -43,8 +43,8 @@ public transport". Both selections are remembered in the browser
 Refresh in `--serve` mode - it's per-browser, not written back to any
 config file. Cards are grouped by activity category in a fixed order
 (hiking, climbing, kite practice, city touring, beach day, surfing,
-sailing, kitesurfing, kayaking, snorkelling, scuba - see `ACTIVITY_ORDER`
-in html_report.py) rather than sorted purely by score, so the same sport
+sailing, whale watching, kitesurfing, kayaking, snorkelling, scuba - see
+`ACTIVITY_ORDER` in html_report.py) rather than sorted purely by score, so the same sport
 always lands in the same spot on the page instead of shuffling around as
 scores change day to day; score still breaks ties within a category. Each
 day is a collapsible dropdown (today open, later days collapsed, so you
@@ -254,12 +254,17 @@ rather than bespoke curves per sport.
 - **Shark risk is a heuristic, not a sighting feed.** NSW's tagged-shark
   listening network (SharkSmart) is real, but there's no documented public
   API for it - only the app/site UI. `shark_risk` in context.py instead
-  flags heavy/recent rain (river-mouth runoff and turbidity are a
-  well-known correlate of elevated shark activity) or, at a
-  `whale_watching` spot, peak whale migration (Jun-Oct - carcasses draw
-  sharks in close to shore, a specific pattern authorities warn about).
-  Applied as a bonus/penalty on beach_day, surfing, snorkelling, scuba and
-  kayaking (a smaller penalty for kayaking - real but lower exposure than
+  flags heavy/recent rain - river-mouth runoff and turbidity are a
+  well-known correlate of elevated shark activity. **Rain is always
+  required.** Peak whale migration (Jun-Oct - carcasses draw sharks in
+  close to shore, a pattern authorities warn about) only lowers the bar,
+  scaling the rain thresholds to 60% at `whale_watching` spots so it trips
+  on less; it can't raise the flag by itself. That's deliberate: season
+  alone spans five months, so treating it as its own trigger lit shark risk
+  on every coastal card every day from June to October regardless of
+  conditions, which is a constant rather than a forecast. Applied as a
+  bonus/penalty on beach_day, surfing, snorkelling, scuba and kayaking (a
+  smaller penalty for kayaking - real but lower exposure than
   swimming/surfing).
 - **No true wind/storm probability.** Open-Meteo's free tier gives
   deterministic hourly forecasts plus one genuine probability field,
@@ -294,27 +299,40 @@ rather than bespoke curves per sport.
   a `whale_watching: true` flag in locations.yaml, set only on spots that
   actually look out over open coastal water - not on every location that
   happens to have a "hiking" activity in season.
-- **Swimming is defined but unused for now** - the `swimming` block in
-  activities.yaml is intact but no location currently lists it as an
-  active activity (paused at your request; re-add it to any location's
-  `activities` to bring it back, no code changes needed).
+- **Swimming and sailing are defined but unused for now** - the `swimming`
+  and `sailing` blocks in activities.yaml are intact but no location
+  currently lists either as an active activity (paused at your request;
+  re-add them to any location's `activities` to bring them back, no code
+  changes needed).
+- **Archived spots live in `config/archive/locations.yaml`** - config_loader
+  only ever reads `config/locations.yaml`, so nothing in `config/archive/`
+  is fetched, scored or rendered. It's a holding pen, not a second config:
+  locations switched off wholesale keep their coordinates, alert matches
+  and comments there, and activities switched off individually are listed
+  under a stub block naming the location they came from. Copy a block (or a
+  single activity entry) back into `config/locations.yaml` to restore it;
+  the live file carries a one-line breadcrumb comment wherever an activity
+  was taken out.
 
 ## Notes
 
 - Rain-history factors (`rain_prior_24h/48h/72h`) come from Open-Meteo's
   `past_days` data, so "wet rock"/"murky water" scoring reflects actual
   recent rainfall, not just the forecast day itself.
-- Snorkelling and scuba are deliberately not at the closest Sydney beaches
-  - Jervis Bay and South West Rocks (Fish Rock Cave) for clear water
-  further out, plus scuba at Gordons Bay (Coogee) as a well-regarded local
-  shore dive.
-- The bundled location list also spans several national parks further from
-  Sydney for climbing/hiking (Kanangra-Boyd, Wollemi, Kosciuszko, the
-  Budawangs, Nowra) - add your own regular spots as you go.
-- **Sailing** (RANSA, Rushcutters Bay) is scored like kitesurfing's calmer
-  cousin - wants steady moderate wind rather than the strong wind
-  kitesurfing needs, and has no wave/marine factors since it's sheltered
-  harbour water. **City touring** (Sydney CBD) is the one fully land-based,
+- Snorkelling and scuba both sit at Gordons Bay (Coogee) - a sheltered
+  rock-bounded bay and a well-regarded local shore dive, reachable without
+  a car, which is what the clear-water-further-out spots (Jervis Bay, Fish
+  Rock Cave) were never going to be for a normal weekend.
+- The bundled location list also spans national parks for climbing/hiking
+  (Wollemi, Nowra, Ku-ring-gai Chase, the Royal) - add your own regular
+  spots as you go.
+- **Ku-ring-gai Chase (Bobbin Head)** covers both hiking and flat-water
+  kayaking on Cowan Creek - it's a sheltered tidal estuary, so it uses the
+  `kayaking_freshwater` profile rather than `kayaking_sea`, and needs no
+  marine data. Left unflagged for `requires_driving`: trailheads sit right
+  at Mt Ku-ring-gai, Berowra and Cowan stations, and Bobbin Head itself is
+  a bus from Turramurra - flip the flag if you'd rather it hid by default.
+- **City touring** (Sydney CBD) is the one fully land-based,
   non-athletic activity - it only cares about rain, temperature, UV and
   visibility (for the skyline/harbour views), with no risk/gate logic
   beyond a storm.
@@ -326,12 +344,30 @@ rather than bespoke curves per sport.
   activity's wind factor, so activities.yaml stores those kt figures
   converted x1.852 - see the comment on that factor if you're retuning it).
   Set up at Parramatta Park (open riverside parkland, no marine data
-  needed) plus Yarra Bay (Kurnell) and Cronulla/Wanda, reusing the
-  kitesurfing-suitable beaches already configured rather than guessing at
-  new ones.
+  needed) plus Cronulla/Wanda and Long Reef, sharing the kitesurfing
+  beaches already configured rather than guessing at new ones.
+- **Kitesurfing** runs at Cronulla/Wanda, Yarra Bay (Kurnell), Long Reef
+  (Fisherman's Beach) and Wollongong (North Beach, flagged drive-only).
+  Long Reef's `offshore_directions` are the one sector in here that doesn't
+  follow the "west is offshore" pattern of the open east-facing beaches -
+  Fisherman's Beach sits on the south side of the peninsula, so land-to-
+  water is northerly there (340-30). That band deliberately stops short of
+  NE: the nor'easter sea breeze is the wind the spot is normally kited in,
+  and a wider sector gated it on most days of a typical forecast. It is
+  **unverified** - check it against local knowledge before relying on that
+  gate, same caveat as every other sector in here.
 - **Parramatta River** is a flat-water kayaking spot (`kayaking_freshwater`)
   right by Parramatta Park - no marine data needed, same as the harbour/bay
   kayaking spots.
+- **Whale watching (boat)** (`whale_watching_boat`) is hard-gated to
+  migration season (May-Nov, `month not in [5..11]` - see the "not in" gate
+  op added for this) since it's genuinely pointless outside it, not just
+  lower-scoring. Weighted toward calm seas (seasickness) and good
+  visibility (actually spotting something) over anything else, with an
+  extra bonus in the Jun-Oct peak window for better odds of a sighting. Set
+  up at Macquarie Lighthouse (South Head) - tours actually cruise a stretch
+  of coast rather than staying put, so this headland is only the weather
+  reference point, not a literal departure/mooring spot.
 - **Surfing's time window is daytime** (9am-4pm default), not a dawn-patrol
   check - loosen or shift it per-location in locations.yaml if you actually
   surf at first light.
@@ -339,5 +375,4 @@ rather than bespoke curves per sport.
   the sand - rather than swimming laps or chasing swell, so its wave/wind
   tolerance is calmer than `swimming` and UV/wind carry more weight (a
   stiff onshore breeze or harsh sun ruins a beach day even without any
-  rain). Set up at Manly, Bondi, Cronulla/Wanda and Jervis Bay (Hyams
-  Beach) - the classic Sydney/day-trip swimming beaches.
+  rain). Set up at Bondi and Jervis Bay (Hyams Beach).

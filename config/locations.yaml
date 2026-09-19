@@ -72,15 +72,6 @@
     climbing: {}
     hiking: {}
 
-- name: Kanangra-Boyd National Park (Kanangra Walls)
-  lat: -33.9928
-  lon: 149.9897
-  park_alert_match: ["Kanangra-Boyd National Park"]
-  requires_driving: true   # remote, unsealed access road - no public transport
-  activities:
-    climbing: {}
-    hiking: {}
-
 - name: Nowra (Shoalhaven Gorge)
   lat: -34.8770
   lon: 150.6020
@@ -96,21 +87,14 @@
   activities:
     hiking: {}
 
-- name: Kosciuszko National Park (Charlotte Pass)
-  lat: -36.4470
-  lon: 148.3236
-  park_alert_match: ["Kosciuszko National Park"]
-  requires_driving: true   # remote alpine access - no public transport
+- name: Ku-ring-gai Chase National Park (Bobbin Head)
+  lat: -33.6560
+  lon: 151.1630
+  park_alert_match: ["Ku-ring-gai Chase National Park"]
   activities:
     hiking: {}
-
-- name: Budawangs (Pigeon House Mountain)
-  lat: -35.3610
-  lon: 150.3125
-  park_alert_match: ["Budawang National Park", "Morton National Park"]
-  requires_driving: true   # remote - no public transport
-  activities:
-    hiking: {}
+    kayaking_freshwater: {}   # Cowan Creek at Bobbin Head - sheltered tidal estuary,
+                              # flat-water profile rather than open-coast kayaking_sea
 
 # --- coastal (Sydney and nearby) ---------------------------------------
 
@@ -134,7 +118,7 @@
   activities:
     surfing:
       offshore_directions: [{from: 225, to: 275}]   # beach faces NE - SW/W is offshore
-    beach_day: {}
+    # beach_day archived - see config/archive/locations.yaml
 
 - name: Bondi Beach
   lat: -33.8908
@@ -155,8 +139,36 @@
   whale_watching: true
   tide_notes: null
   activities:
+    snorkelling:
+      time_window: {start: 9, end: 15}
     scuba:
       time_window: {start: 8, end: 15}
+
+- name: Macquarie Lighthouse (South Head)
+  lat: -33.8207
+  lon: 151.2831
+  marine: true
+  whale_watching: true
+  activities:
+    whale_watching_boat: {}   # tours actually cruise the coast, not moored at the lighthouse -
+                              # this headland is just the weather reference point for that stretch
+
+- name: Long Reef (Fisherman's Beach)
+  lat: -33.7375
+  lon: 151.3015
+  marine: true
+  pollution_advisory: false
+  activities:
+    kitesurfing:
+      time_window: {start: 11, end: 16}
+      # UNVERIFIED - check before trusting the kitesurfing gate here. Fisherman's Beach sits on
+      # the south side of the Long Reef peninsula with the golf course headland to its north, so
+      # land-to-water here is northerly, not the westerly that applies on the open east-facing
+      # beaches (Manly/Bondi/Cronulla). Narrowed from an initial 340-60 to clear the NE sea
+      # breeze, which is the wind the spot is normally kited in - this now flags only true
+      # N/NNW-through-NNE land-to-water days, not a cross-onshore nor'easter.
+      offshore_directions: [{from: 340, to: 30}]
+    kite_practice: {}   # wide flat sand at the launch - trainer-kite ground at the same spot
 
 - name: Cronulla / Wanda Beach
   lat: -34.0287
@@ -172,8 +184,7 @@
       time_window: {start: 11, end: 16}
       offshore_directions: [{from: 280, to: 330}]
     kite_practice: {}   # wide open beach, consistently windy - good trainer-kite ground before rigging a full kite
-    kayaking_sea: {}
-    beach_day: {}
+    # kayaking_sea, beach_day archived - see config/archive/locations.yaml
 
 - name: Yarra Bay, Botany Bay (Kurnell)
   lat: -33.9762
@@ -183,20 +194,19 @@
     kitesurfing:
       time_window: {start: 11, end: 16}
       offshore_directions: [{from: 200, to: 280}]   # sheltered bay - unsafe direction blows away from shore, out into the bay
-    kite_practice: {}   # flat sheltered bay, wide beach - a good spot to learn trainer-kite handling before going out on the water
-    kayaking_freshwater: {}   # sheltered bay - flat-water profile, not a literal freshwater body
+    # kite_practice, kayaking_freshwater archived - see config/archive/locations.yaml
 
-- name: Sydney Harbour (Rose Bay)
-  lat: -33.8688
-  lon: 151.2711
+- name: Wollongong (North Beach)
+  lat: -34.4139
+  lon: 150.9006
+  marine: true
+  pollution_advisory: false
+  requires_driving: true   # flagged drive-only at your request (there is a South Coast Line
+                           # train to Wollongong station) - unset this to have it show by default
   activities:
-    kayaking_freshwater: {}
-
-- name: RANSA (Rushcutters Bay)
-  lat: -33.8735
-  lon: 151.2350
-  activities:
-    sailing: {}
+    kitesurfing:
+      time_window: {start: 11, end: 16}
+      offshore_directions: [{from: 250, to: 300}]   # open east-facing beach - W is offshore
 
 - name: Sydney CBD
   lat: -33.8688
@@ -226,25 +236,5 @@
   requires_driving: true   # no train, no practical direct public transport from Sydney
   activities:
     kayaking_sea: {}
-    snorkelling:
-      time_window: {start: 9, end: 15}
-    scuba:
-      time_window: {start: 8, end: 15}
-    hiking: {}
     beach_day: {}
-
-# --- further out - genuinely clear water for snorkelling/scuba ---------
-
-- name: South West Rocks (Fish Rock Cave)
-  lat: -30.8817
-  lon: 153.0400
-  marine: true
-  pollution_advisory: false
-  whale_watching: true
-  park_alert_match: ["Arakoon National Park"]
-  requires_driving: true   # far north coast, no practical public transport from Sydney
-  activities:
-    snorkelling:
-      time_window: {start: 9, end: 15}
-    scuba:
-      time_window: {start: 8, end: 15}
+    # snorkelling, scuba, hiking archived - see config/archive/locations.yaml

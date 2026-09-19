@@ -19,6 +19,7 @@ ACTIVITY_ICONS = {
     "sailing": "\U000026F5",        # sailboat
     "city_touring": "\U0001F3D9",   # cityscape
     "beach_day": "\U0001F3D6",      # beach with umbrella
+    "whale_watching_boat": "\U0001F433",   # whale
 }
 
 RESET = "\033[0m"

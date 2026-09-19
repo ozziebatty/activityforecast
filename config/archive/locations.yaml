@@ -1,0 +1,93 @@
+# Archived location / activity entries - NOT loaded by the app.
+#
+# config_loader.py only ever reads config/locations.yaml, so nothing in this
+# directory is fetched, scored or rendered. This file is just a holding pen
+# so spots can be switched off without losing their coordinates, alert
+# matches, offshore sectors and tuning comments.
+#
+# To bring something back: copy the block (or the single activity entry)
+# back into config/locations.yaml and delete it from here. No code changes
+# needed either way.
+#
+# Archived 2026-09-20.
+
+# --- whole locations (every activity they had was archived) -------------
+
+- name: Kanangra-Boyd National Park (Kanangra Walls)
+  lat: -33.9928
+  lon: 149.9897
+  park_alert_match: ["Kanangra-Boyd National Park"]
+  requires_driving: true   # remote, unsealed access road - no public transport
+  activities:
+    climbing: {}
+    hiking: {}
+
+- name: Kosciuszko National Park (Charlotte Pass)
+  lat: -36.4470
+  lon: 148.3236
+  park_alert_match: ["Kosciuszko National Park"]
+  requires_driving: true   # remote alpine access - no public transport
+  activities:
+    hiking: {}
+
+- name: Budawangs (Pigeon House Mountain)
+  lat: -35.3610
+  lon: 150.3125
+  park_alert_match: ["Budawang National Park", "Morton National Park"]
+  requires_driving: true   # remote - no public transport
+  activities:
+    hiking: {}
+
+- name: Sydney Harbour (Rose Bay)
+  lat: -33.8688
+  lon: 151.2711
+  activities:
+    kayaking_freshwater: {}
+
+- name: RANSA (Rushcutters Bay)
+  lat: -33.8735
+  lon: 151.2350
+  activities:
+    sailing: {}
+
+- name: South West Rocks (Fish Rock Cave)
+  lat: -30.8817
+  lon: 153.0400
+  marine: true
+  pollution_advisory: false
+  whale_watching: true
+  park_alert_match: ["Arakoon National Park"]
+  requires_driving: true   # far north coast, no practical public transport from Sydney
+  activities:
+    snorkelling:
+      time_window: {start: 9, end: 15}
+    scuba:
+      time_window: {start: 8, end: 15}
+
+# --- single activities archived off a location that's still live --------
+#
+# These locations remain in config/locations.yaml with their other
+# activities. Only the activity entries below were removed - paste one back
+# under that location's `activities:` key to restore it.
+
+- name: Manly Beach            # still live for surfing
+  activities:
+    beach_day: {}
+
+- name: Cronulla / Wanda Beach   # still live for surfing, kitesurfing, kite practice
+  activities:
+    beach_day: {}
+    kayaking_sea: {}
+
+- name: Yarra Bay, Botany Bay (Kurnell)   # still live for kitesurfing
+  activities:
+    kite_practice: {}   # flat sheltered bay, wide beach - a good spot to learn trainer-kite handling before going out on the water
+    kayaking_freshwater: {}   # sheltered bay - flat-water profile, not a literal freshwater body
+
+- name: Jervis Bay (Hyams Beach)   # still live for sea kayaking and beach day
+  activities:
+    hiking: {}
+    snorkelling:
+      time_window: {start: 9, end: 15}
+    scuba:
+      time_window: {start: 8, end: 15}

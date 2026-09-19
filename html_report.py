@@ -34,6 +34,7 @@ DISPLAY_NAMES = {
     "kayaking_freshwater": "kayaking",
     "kite_practice": "kite practice",
     "beach_day": "beach day",
+    "whale_watching_boat": "whale watching",
 }
 
 ACTIVITY_ICON = {
@@ -50,6 +51,7 @@ ACTIVITY_ICON = {
     "sailing": "sailing",
     "city_touring": "city_touring",
     "beach_day": "beach_day",
+    "whale_watching_boat": "whale",   # reuses the bonus glyph - already a whale silhouette
 }
 
 # Cards (and the Sports checklist) group by activity category in this order
@@ -59,8 +61,8 @@ ACTIVITY_ICON = {
 # everything named here, in whatever order it's encountered.
 ACTIVITY_ORDER = [
     "hiking", "climbing", "kite_practice", "city_touring", "beach_day",
-    "surfing", "sailing", "kitesurfing", "kayaking_sea", "kayaking_freshwater",
-    "snorkelling", "scuba",
+    "surfing", "sailing", "whale_watching_boat", "kitesurfing", "kayaking_sea",
+    "kayaking_freshwater", "snorkelling", "scuba",
 ]
 ACTIVITY_ORDER_INDEX = {key: i for i, key in enumerate(ACTIVITY_ORDER)}
 

@@ -55,10 +55,12 @@
 #                                  bluebottle season (Nov-Apr) - a heuristic proxy, not a live
 #                                  sighting feed (none exists for free). Most meaningful at spots
 #                                  with `offshore_directions` configured. See README.)
-#   shark_risk                     (1 if heavy/recent rain (river-mouth runoff/turbidity) or,
-#                                  at a whale_watching spot, peak whale migration (Jun-Oct,
-#                                  carcasses draw sharks inshore) - see context.py. Heuristic
-#                                  proxy, not a live feed. See README.)
+#   shark_risk                     (1 if heavy/recent rain drives river-mouth runoff/turbidity.
+#                                  Rain is always required; at a whale_watching spot in peak
+#                                  migration (Jun-Oct, carcasses draw sharks inshore) the rain
+#                                  thresholds drop to 60% so it trips on less - season alone
+#                                  never raises it. See context.py. Heuristic proxy, not a
+#                                  live feed. See README.)
 #   month                         (1-12, for seasonal bonuses e.g. whale watching)
 #   wave_height_max, wind_wave_height_max, swell_wave_height_max,
 #   swell_period_avg, sea_surface_temperature_avg   (marine - only present
@@ -822,6 +824,63 @@ sailing:   # club dinghy sailing on sheltered harbour water - moderate, steady w
       op: ">"
       value: 55
       reason: Dangerous gusts
+
+whale_watching_boat:   # a boat tour along the coast, not a fixed spot - the location it's
+                       # attached to (see locations.yaml) is a real headland/lighthouse used
+                       # as the weather reference point, not literally where the boat stays.
+  time_window: {start: 9, end: 15}   # typical mid-morning/midday tour departure window
+  factors:
+    - variable: wave_height_max   # calmer seas = less seasickness - the single biggest factor
+      ideal_max: 1.0
+      hard_max: 2.5
+      weight: 0.30
+    - variable: visibility_min    # fog/haze cuts the actual chance of seeing anything
+      ideal_min: 10000
+      hard_min: 3000
+      weight: 0.20
+    - variable: wind_speed_max    # chop and general comfort on an open deck
+      ideal_max: 20
+      hard_max: 45
+      weight: 0.15
+    - variable: rain_total
+      ideal_max: 0
+      hard_max: 10
+      weight: 0.15
+    - variable: temperature_avg
+      ideal_min: 15
+      ideal_max: 26
+      hard_min: 8
+      hard_max: 32
+      weight: 0.10
+    - variable: uv_max            # no real shade on most whale-watching boats
+      ideal_max: 7
+      hard_max: 11
+      weight: 0.10
+  risk_factors:
+    - variable: rain_probability_max
+      sensitivity: medium
+      weight: 0.10
+  bonuses:
+    - name: peak whale season   # migration peaks Jun-Oct - meaningfully better odds of an actual sighting
+      conditions:
+        - variable: month
+          op: in
+          value: [6, 7, 8, 9, 10]
+        - variable: whale_watching_spot
+          op: "=="
+          value: 1
+      points: 15
+  gates:
+    - name: storm
+      variable: storm_present
+      op: "=="
+      value: 1
+      reason: Storm
+    - name: out_of_season   # obviously pointless outside migration season - a hard gate, not just a
+      variable: month       # lower score, same idea as the storm/offshore-wind gates elsewhere
+      op: "not in"
+      value: [5, 6, 7, 8, 9, 10, 11]
+      reason: Outside whale season (May-Nov)
 
 city_touring:   # walking around the CBD - sightseeing, harbour/skyline views, no water/altitude factors at all
   time_window: {start: 9, end: 17}

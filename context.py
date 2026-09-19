@@ -38,7 +38,13 @@ SHARK_RUNOFF_PRIOR_24H_MM = 15
 SHARK_RUNOFF_PRIOR_72H_MM = 25
 # Jun-Oct - peak whale migration. Whale carcasses draw sharks in close to shore, a pattern
 # NSW authorities specifically warn about - matches activities.yaml's "whales peak" bonus.
+# Deliberately NOT a trigger on its own: it spans five months, so firing on season alone
+# flagged shark risk on every coastal card every day from June to October regardless of
+# conditions, which is a constant, not a forecast. It instead scales the rain thresholds
+# above down by this factor, so in season it takes less rain to trip - rain is still
+# required either way.
 SHARK_WHALE_CARCASS_MONTHS = {6, 7, 8, 9, 10}
+SHARK_WHALE_SEASON_THRESHOLD_FACTOR = 0.6
 
 
 def _clean(values):
@@ -180,18 +186,19 @@ def build_day_context(
         onshore_breeze = not scope["offshore_wind_present"] and (scope.get("wind_speed_avg") or 0) > 15
         scope["bluebottle_risk"] = 1 if (in_season and onshore_breeze) else 0
         # Heuristic proxy, not a live feed - see SHARK_RUNOFF_*/SHARK_WHALE_CARCASS_MONTHS
-        # above. The runoff trigger isn't location-gated (a big rain event raises risk
-        # everywhere, harbour/river spots included, just usually less so than an open
-        # surf beach - see the smaller bonus weight used for kayaking in activities.yaml);
-        # the whale-carcass trigger only fires at spots that actually front open coastal
-        # water, same as the whale-watching bonus itself.
-        runoff_risk = (
-            (scope.get("rain_total") or 0) > SHARK_RUNOFF_RAIN_MM
-            or rain_prior_24h > SHARK_RUNOFF_PRIOR_24H_MM
-            or rain_prior_72h > SHARK_RUNOFF_PRIOR_72H_MM
-        )
-        whale_carcass_risk = whale_watching and day["month"] in SHARK_WHALE_CARCASS_MONTHS
-        scope["shark_risk"] = 1 if (runoff_risk or whale_carcass_risk) else 0
+        # above. Rain-driven runoff is the trigger; it isn't location-gated (a big rain event
+        # raises risk everywhere, harbour/river spots included, just usually less so than an
+        # open surf beach - see the smaller bonus weight used for kayaking in activities.yaml).
+        # Peak whale season only lowers the bar, and only at spots that actually front open
+        # coastal water (same flag as the whale-watching bonus) - it can't raise the flag by
+        # itself on a dry day.
+        in_whale_season = whale_watching and day["month"] in SHARK_WHALE_CARCASS_MONTHS
+        threshold = SHARK_WHALE_SEASON_THRESHOLD_FACTOR if in_whale_season else 1.0
+        scope["shark_risk"] = 1 if (
+            (scope.get("rain_total") or 0) > SHARK_RUNOFF_RAIN_MM * threshold
+            or rain_prior_24h > SHARK_RUNOFF_PRIOR_24H_MM * threshold
+            or rain_prior_72h > SHARK_RUNOFF_PRIOR_72H_MM * threshold
+        ) else 0
         scope.update(shared)
 
     return scopes
