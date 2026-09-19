@@ -12,6 +12,10 @@ on:
   schedule:
     - cron: "0 */3 * * *"   # every 3 hours, UTC
   workflow_dispatch: {}
+  push:
+    branches: [main]        # republish straight away on a config/code change,
+    paths-ignore:           # rather than waiting up to 3h for the next cron
+      - "README.md"
 
 permissions:
   contents: read
